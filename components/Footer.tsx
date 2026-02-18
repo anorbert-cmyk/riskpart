@@ -7,7 +7,7 @@ export const Footer = () => {
         <footer className="border-t border-border-hairline bg-off-white">
             <div className="border-b border-border-hairline">
                 <button 
-                    className="w-full flex items-center justify-between px-8 lg:px-16 py-6 bg-off-white hover:bg-gray-50 transition-colors group text-left focus:outline-none"
+                    className="w-full flex items-center justify-between px-4 md:px-8 lg:px-16 py-6 bg-off-white hover:bg-gray-50 transition-colors group text-left focus:outline-none"
                     onClick={() => setIsOpen(!isOpen)}
                 >
                     <div className="flex items-center gap-3">
@@ -20,7 +20,7 @@ export const Footer = () => {
                 </button>
                 
                 <div className={`overflow-hidden transition-all duration-500 ease-in-out bg-white ${isOpen ? 'max-h-[800px] border-t border-border-hairline' : 'max-h-0'}`}>
-                    <div className="px-8 lg:px-16 py-12 max-w-7xl mx-auto">
+                    <div className="px-4 md:px-8 lg:px-16 py-12 max-w-7xl mx-auto">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                             <SourceColumn 
                                 items={[
@@ -44,7 +44,7 @@ export const Footer = () => {
                 </div>
             </div>
             
-            <div className="px-8 lg:px-16 py-16">
+            <div className="px-4 md:px-8 lg:px-16 py-16">
                 <div className="max-w-7xl mx-auto">
                     <h4 className="text-[10px] font-bold uppercase tracking-widest text-charcoal mb-8">Footnotes & References</h4>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 text-[10px] text-charcoal-muted font-mono leading-relaxed">

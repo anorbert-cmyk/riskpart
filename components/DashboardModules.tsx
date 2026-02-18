@@ -4,7 +4,7 @@ import { riskData, metricsData, teamRoles, milestones, complianceItems } from '.
 // --- Section 01: Risk Matrix ---
 export const RiskMatrix = () => {
     return (
-        <div className="overflow-x-auto border border-border-hairline bg-white shadow-sm">
+        <div className="overflow-x-auto border border-border-hairline bg-white shadow-sm scrollbar-thin">
             <table className="w-full text-left border-collapse min-w-[1000px]">
                 <thead className="bg-off-white border-b border-border-hairline font-mono text-[9px] uppercase tracking-widest text-charcoal-muted">
                     <tr>
@@ -82,62 +82,66 @@ export const RoiTables = () => {
         <div className="space-y-12">
             <div>
                 <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-charcoal mb-4 border-b border-border-hairline pb-2">Investment Required (CapEx)</h3>
-                <table className="w-full text-left border-collapse font-mono text-xs">
-                    <tbody className="divide-y divide-border-hairline">
-                        <tr className="group">
-                            <td className="py-3 text-charcoal font-bold w-1/2">Infrastructure Overhaul (GPU Cluster)</td>
-                            <td className="py-3 text-right text-charcoal-muted w-1/4">$120,000</td>
-                            <td className="py-3 text-right text-charcoal-muted w-1/4">One-time</td>
-                        </tr>
-                        <tr className="group">
-                            <td className="py-3 text-charcoal font-bold">Security Audit & Compliance (SOC2)</td>
-                            <td className="py-3 text-right text-charcoal-muted">$45,000</td>
-                            <td className="py-3 text-right text-charcoal-muted">Annual</td>
-                        </tr>
-                        <tr className="group">
-                            <td className="py-3 text-charcoal font-bold">Senior AI Engineer Headcount (x2)</td>
-                            <td className="py-3 text-right text-charcoal-muted">$480,000</td>
-                            <td className="py-3 text-right text-charcoal-muted">Annual</td>
-                        </tr>
-                    </tbody>
-                    <tfoot className="border-t-2 border-charcoal">
-                        <tr>
-                            <td className="py-4 font-bold uppercase">Total Initial Outlay</td>
-                            <td className="py-4 text-right font-bold text-lg">$645,000</td>
-                            <td></td>
-                        </tr>
-                    </tfoot>
-                </table>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse font-mono text-xs min-w-[500px]">
+                        <tbody className="divide-y divide-border-hairline">
+                            <tr className="group">
+                                <td className="py-3 text-charcoal font-bold w-1/2">Infrastructure Overhaul (GPU Cluster)</td>
+                                <td className="py-3 text-right text-charcoal-muted w-1/4">$120,000</td>
+                                <td className="py-3 text-right text-charcoal-muted w-1/4">One-time</td>
+                            </tr>
+                            <tr className="group">
+                                <td className="py-3 text-charcoal font-bold">Security Audit & Compliance (SOC2)</td>
+                                <td className="py-3 text-right text-charcoal-muted">$45,000</td>
+                                <td className="py-3 text-right text-charcoal-muted">Annual</td>
+                            </tr>
+                            <tr className="group">
+                                <td className="py-3 text-charcoal font-bold">Senior AI Engineer Headcount (x2)</td>
+                                <td className="py-3 text-right text-charcoal-muted">$480,000</td>
+                                <td className="py-3 text-right text-charcoal-muted">Annual</td>
+                            </tr>
+                        </tbody>
+                        <tfoot className="border-t-2 border-charcoal">
+                            <tr>
+                                <td className="py-4 font-bold uppercase">Total Initial Outlay</td>
+                                <td className="py-4 text-right font-bold text-lg">$645,000</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
 
             <div>
                 <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-charcoal mb-4 border-b border-border-hairline pb-2">Expected Returns (Value Creation)</h3>
-                <table className="w-full text-left border-collapse font-mono text-xs">
-                    <tbody className="divide-y divide-border-hairline">
-                        <tr className="group">
-                            <td className="py-3 text-charcoal font-bold w-1/2">Operational Efficiency (Headcount Reduc.)</td>
-                            <td className="py-3 text-right text-charcoal-muted w-1/4">$2.4M</td>
-                            <td className="py-3 text-right text-green-700 w-1/4 font-bold">+300%</td>
-                        </tr>
-                        <tr className="group">
-                            <td className="py-3 text-charcoal font-bold">Churn Reduction (Retention)</td>
-                            <td className="py-3 text-right text-charcoal-muted">$850k</td>
-                            <td className="py-3 text-right text-green-700 font-bold">+12%</td>
-                        </tr>
-                        <tr className="group">
-                            <td className="py-3 text-charcoal font-bold">New Market Penetration (Enterprise)</td>
-                            <td className="py-3 text-right text-charcoal-muted">$3.2M</td>
-                            <td className="py-3 text-right text-green-700 font-bold">New</td>
-                        </tr>
-                    </tbody>
-                    <tfoot className="border-t-2 border-charcoal">
-                        <tr>
-                            <td className="py-4 font-bold uppercase">Total Projected Value</td>
-                            <td className="py-4 text-right font-bold text-lg">$6.45M</td>
-                            <td></td>
-                        </tr>
-                    </tfoot>
-                </table>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse font-mono text-xs min-w-[500px]">
+                        <tbody className="divide-y divide-border-hairline">
+                            <tr className="group">
+                                <td className="py-3 text-charcoal font-bold w-1/2">Operational Efficiency (Headcount Reduc.)</td>
+                                <td className="py-3 text-right text-charcoal-muted w-1/4">$2.4M</td>
+                                <td className="py-3 text-right text-green-700 w-1/4 font-bold">+300%</td>
+                            </tr>
+                            <tr className="group">
+                                <td className="py-3 text-charcoal font-bold">Churn Reduction (Retention)</td>
+                                <td className="py-3 text-right text-charcoal-muted">$850k</td>
+                                <td className="py-3 text-right text-green-700 font-bold">+12%</td>
+                            </tr>
+                            <tr className="group">
+                                <td className="py-3 text-charcoal font-bold">New Market Penetration (Enterprise)</td>
+                                <td className="py-3 text-right text-charcoal-muted">$3.2M</td>
+                                <td className="py-3 text-right text-green-700 font-bold">New</td>
+                            </tr>
+                        </tbody>
+                        <tfoot className="border-t-2 border-charcoal">
+                            <tr>
+                                <td className="py-4 font-bold uppercase">Total Projected Value</td>
+                                <td className="py-4 text-right font-bold text-lg">$6.45M</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
         </div>
     );
@@ -146,7 +150,7 @@ export const RoiTables = () => {
 // --- Section 05: Team Table ---
 export const TeamTable = () => {
     return (
-        <div className="overflow-x-auto border border-border-hairline bg-white mb-8 shadow-sm">
+        <div className="overflow-x-auto border border-border-hairline bg-white mb-8 shadow-sm scrollbar-thin">
             <table className="w-full text-left border-collapse min-w-[800px]">
                 <thead className="bg-primary text-white border-b border-charcoal font-mono text-[9px] uppercase tracking-widest">
                     <tr>
@@ -180,7 +184,7 @@ export const TeamTable = () => {
 // --- Section 06: Milestone Table ---
 export const MilestoneTable = () => {
     return (
-        <div className="overflow-x-auto border border-border-hairline bg-white shadow-sm">
+        <div className="overflow-x-auto border border-border-hairline bg-white shadow-sm scrollbar-thin">
             <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead className="bg-off-white border-b border-border-hairline font-mono text-[9px] uppercase tracking-widest text-charcoal-muted">
                     <tr>
