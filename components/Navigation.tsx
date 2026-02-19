@@ -48,8 +48,13 @@ export const Sidebar = () => {
     );
 };
 
-export const Header = () => {
+interface HeaderProps {
+    onExport?: (type: 'pdf' | 'csv' | 'json') => void;
+}
+
+export const Header = ({ onExport }: HeaderProps) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isExportOpen, setIsExportOpen] = useState(false);
 
     return (
         <header className="sticky top-0 z-40 bg-off-white/95 backdrop-blur border-b border-border-hairline w-full">
@@ -81,9 +86,32 @@ export const Header = () => {
                 </div>
                 
                 {/* Desktop Actions */}
-                <div className="hidden lg:flex gap-4 border-l border-border-hairline pl-6">
-                    <button className="text-charcoal hover:text-charcoal-muted transition-colors"><span className="material-symbols-outlined text-lg">code</span></button>
-                    <button className="text-charcoal hover:text-charcoal-muted transition-colors"><span className="material-symbols-outlined text-lg">picture_as_pdf</span></button>
+                <div className="hidden lg:flex gap-4 border-l border-border-hairline pl-6 relative">
+                    <button 
+                        className="text-charcoal hover:text-charcoal-muted transition-colors flex items-center gap-2 group outline-none"
+                        onClick={() => setIsExportOpen(!isExportOpen)}
+                    >
+                        <span className="material-symbols-outlined text-lg">download</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest">Export</span>
+                        <span className="material-symbols-outlined text-sm transition-transform duration-300 group-hover:translate-y-0.5">expand_more</span>
+                    </button>
+
+                    {isExportOpen && (
+                        <>
+                            <div className="fixed inset-0 z-40" onClick={() => setIsExportOpen(false)}></div>
+                            <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-border-hairline shadow-lg z-50 flex flex-col py-2 animate-in fade-in zoom-in-95 duration-200">
+                                <button onClick={() => { onExport?.('pdf'); setIsExportOpen(false); }} className="px-4 py-3 text-left hover:bg-off-white text-xs font-mono text-charcoal flex items-center gap-3 transition-colors">
+                                    <span className="material-symbols-outlined text-sm">picture_as_pdf</span> PDF Document
+                                </button>
+                                <button onClick={() => { onExport?.('csv'); setIsExportOpen(false); }} className="px-4 py-3 text-left hover:bg-off-white text-xs font-mono text-charcoal flex items-center gap-3 transition-colors">
+                                    <span className="material-symbols-outlined text-sm">table_view</span> CSV (Risk Matrix)
+                                </button>
+                                <button onClick={() => { onExport?.('json'); setIsExportOpen(false); }} className="px-4 py-3 text-left hover:bg-off-white text-xs font-mono text-charcoal flex items-center gap-3 transition-colors">
+                                    <span className="material-symbols-outlined text-sm">data_object</span> JSON Data
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Mobile Menu Dropdown */}

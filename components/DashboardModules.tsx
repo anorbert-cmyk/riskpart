@@ -1,8 +1,8 @@
 import React from 'react';
-import { riskData, metricsData, teamRoles, milestones, complianceItems } from '../data';
+import { RiskItem, MetricItem, MilestoneItem, TeamRole, ComplianceItem } from '../types';
 
 // --- Section 01: Risk Matrix ---
-export const RiskMatrix = () => {
+export const RiskMatrix = ({ data }: { data: RiskItem[] }) => {
     return (
         <div className="overflow-x-auto border border-border-hairline bg-white shadow-sm scrollbar-thin">
             <table className="w-full text-left border-collapse min-w-[1000px]">
@@ -18,7 +18,7 @@ export const RiskMatrix = () => {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-border-hairline font-serif text-xs text-charcoal">
-                    {riskData.map((row) => (
+                    {data.map((row) => (
                         <tr key={row.id} className="group hover:bg-off-white/50 transition-colors">
                             <td className="px-6 py-4 border-r border-border-hairline font-mono text-[10px] text-charcoal-muted">{row.id}</td>
                             <td className="px-6 py-4 border-r border-border-hairline">
@@ -45,10 +45,10 @@ export const RiskMatrix = () => {
 };
 
 // --- Section 02: Metrics Dashboard ---
-export const MetricsDashboard = () => {
+export const MetricsDashboard = ({ data }: { data: MetricItem[] }) => {
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {metricsData.map((metric, idx) => (
+            {data.map((metric, idx) => (
                 <div key={idx} className="bg-white border border-border-hairline p-8 flex flex-col justify-between h-48 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
                     <div className="flex justify-between items-start">
                         <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-charcoal-muted">{metric.label}</span>
@@ -76,8 +76,23 @@ export const MetricsDashboard = () => {
     );
 };
 
+export interface RoiItem {
+    label: string;
+    value: string;
+    note: string;
+}
+
 // --- Section 04: ROI Tables ---
-export const RoiTables = () => {
+export const RoiTables = ({ investmentData, returnsData }: { investmentData: RoiItem[], returnsData: RoiItem[] }) => {
+    
+    // Helper to calculate totals (simplistic number parsing for demo)
+    const calculateTotal = (items: RoiItem[]) => {
+        // This is a visual calculation based on the string values provided
+        // In a real app, you'd store numbers and format them later.
+        // For this parser, we will rely on the user input or defaults.
+        return null; 
+    };
+
     return (
         <div className="space-y-12">
             <div>
@@ -85,21 +100,13 @@ export const RoiTables = () => {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse font-mono text-xs min-w-[500px]">
                         <tbody className="divide-y divide-border-hairline">
-                            <tr className="group">
-                                <td className="py-3 text-charcoal font-bold w-1/2">Infrastructure Overhaul (GPU Cluster)</td>
-                                <td className="py-3 text-right text-charcoal-muted w-1/4">$120,000</td>
-                                <td className="py-3 text-right text-charcoal-muted w-1/4">One-time</td>
-                            </tr>
-                            <tr className="group">
-                                <td className="py-3 text-charcoal font-bold">Security Audit & Compliance (SOC2)</td>
-                                <td className="py-3 text-right text-charcoal-muted">$45,000</td>
-                                <td className="py-3 text-right text-charcoal-muted">Annual</td>
-                            </tr>
-                            <tr className="group">
-                                <td className="py-3 text-charcoal font-bold">Senior AI Engineer Headcount (x2)</td>
-                                <td className="py-3 text-right text-charcoal-muted">$480,000</td>
-                                <td className="py-3 text-right text-charcoal-muted">Annual</td>
-                            </tr>
+                            {investmentData.map((item, idx) => (
+                                <tr key={idx} className="group">
+                                    <td className="py-3 text-charcoal font-bold w-1/2">{item.label}</td>
+                                    <td className="py-3 text-right text-charcoal-muted w-1/4">{item.value}</td>
+                                    <td className="py-3 text-right text-charcoal-muted w-1/4">{item.note}</td>
+                                </tr>
+                            ))}
                         </tbody>
                         <tfoot className="border-t-2 border-charcoal">
                             <tr>
@@ -117,21 +124,13 @@ export const RoiTables = () => {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse font-mono text-xs min-w-[500px]">
                         <tbody className="divide-y divide-border-hairline">
-                            <tr className="group">
-                                <td className="py-3 text-charcoal font-bold w-1/2">Operational Efficiency (Headcount Reduc.)</td>
-                                <td className="py-3 text-right text-charcoal-muted w-1/4">$2.4M</td>
-                                <td className="py-3 text-right text-green-700 w-1/4 font-bold">+300%</td>
-                            </tr>
-                            <tr className="group">
-                                <td className="py-3 text-charcoal font-bold">Churn Reduction (Retention)</td>
-                                <td className="py-3 text-right text-charcoal-muted">$850k</td>
-                                <td className="py-3 text-right text-green-700 font-bold">+12%</td>
-                            </tr>
-                            <tr className="group">
-                                <td className="py-3 text-charcoal font-bold">New Market Penetration (Enterprise)</td>
-                                <td className="py-3 text-right text-charcoal-muted">$3.2M</td>
-                                <td className="py-3 text-right text-green-700 font-bold">New</td>
-                            </tr>
+                             {returnsData.map((item, idx) => (
+                                <tr key={idx} className="group">
+                                    <td className="py-3 text-charcoal font-bold w-1/2">{item.label}</td>
+                                    <td className="py-3 text-right text-charcoal-muted w-1/4">{item.value}</td>
+                                    <td className={`py-3 text-right w-1/4 font-bold ${item.note.includes('+') ? 'text-green-700' : 'text-charcoal'}`}>{item.note}</td>
+                                </tr>
+                            ))}
                         </tbody>
                         <tfoot className="border-t-2 border-charcoal">
                             <tr>
@@ -148,7 +147,7 @@ export const RoiTables = () => {
 };
 
 // --- Section 05: Team Table ---
-export const TeamTable = () => {
+export const TeamTable = ({ data }: { data: TeamRole[] }) => {
     return (
         <div className="overflow-x-auto border border-border-hairline bg-white mb-8 shadow-sm scrollbar-thin">
             <table className="w-full text-left border-collapse min-w-[800px]">
@@ -161,7 +160,7 @@ export const TeamTable = () => {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-border-hairline font-serif text-xs text-charcoal">
-                    {teamRoles.map((role, idx) => (
+                    {data.map((role, idx) => (
                         <tr key={idx} className="group hover:bg-off-white/50 transition-colors">
                             <td className="px-6 py-4 border-r border-border-hairline font-bold">{role.role}</td>
                             <td className="px-6 py-4 border-r border-border-hairline text-charcoal-muted">{role.phase1}</td>
@@ -182,7 +181,7 @@ export const TeamTable = () => {
 };
 
 // --- Section 06: Milestone Table ---
-export const MilestoneTable = () => {
+export const MilestoneTable = ({ data }: { data: MilestoneItem[] }) => {
     return (
         <div className="overflow-x-auto border border-border-hairline bg-white shadow-sm scrollbar-thin">
             <table className="w-full text-left border-collapse min-w-[900px]">
@@ -196,7 +195,7 @@ export const MilestoneTable = () => {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-border-hairline font-mono text-[10px] text-charcoal-muted">
-                    {milestones.map((ms) => (
+                    {data.map((ms) => (
                         <tr key={ms.id} className="group hover:bg-off-white/50 transition-colors">
                             <td className="px-6 py-3 border-r border-border-hairline font-bold text-charcoal">{ms.id}</td>
                             <td className="px-6 py-3 border-r border-border-hairline font-serif text-xs text-charcoal">{ms.description}</td>
@@ -212,10 +211,10 @@ export const MilestoneTable = () => {
 };
 
 // --- Section 07: Compliance Grid ---
-export const ComplianceGrid = () => {
+export const ComplianceGrid = ({ data }: { data: ComplianceItem[] }) => {
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border-hairline border border-border-hairline">
-            {complianceItems.map((item, idx) => (
+            {data.map((item, idx) => (
                 <div key={idx} className="bg-white p-6 hover:bg-off-white transition-colors group">
                     <span className="material-symbols-outlined text-charcoal mb-4 group-hover:scale-110 transition-transform">{item.icon}</span>
                     <h4 className="font-mono text-xs font-bold uppercase mb-2">{item.title}</h4>

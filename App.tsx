@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar, Header } from './components/Navigation';
 import { RiskMatrix, MetricsDashboard, RoiTables, TeamTable, MilestoneTable, ComplianceGrid } from './components/DashboardModules';
 import { Footer } from './components/Footer';
-import { roiProjections } from './data';
+import { parseDossierText, generateDefaultRawText, ParsedDossierData } from './utils/dossierParser';
 
 interface SectionWrapperProps {
   id: string;
@@ -25,12 +25,110 @@ const SectionWrapper = ({ id, number, title, children, bg }: SectionWrapperProps
 );
 
 function App() {
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [rawText, setRawText] = useState(generateDefaultRawText());
+  const [data, setData] = useState<ParsedDossierData | null>(null);
+
+  useEffect(() => {
+    // Parse initial default data
+    setData(parseDossierText(rawText));
+  }, []); // Run once on mount
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setRawText(e.target.value);
+  };
+
+  const applyChanges = () => {
+      setData(parseDossierText(rawText));
+      setIsEditorOpen(false);
+  };
+
+  const handleExport = (type: 'pdf' | 'csv' | 'json') => {
+      if (!data) return;
+
+      if (type === 'pdf') {
+          window.print();
+      } else if (type === 'json') {
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'syndicate-dossier.json';
+          a.click();
+          URL.revokeObjectURL(url);
+      } else if (type === 'csv') {
+          // Exporting Risk Matrix as CSV
+          const headers = ['ID', 'Title', 'Subtitle', 'Likelihood', 'Impact', 'Score', 'Mitigation', 'Contingency'];
+          const rows = data.risks.map(r => [
+              r.id,
+              `"${r.description.title.replace(/"/g, '""')}"`,
+              `"${r.description.subtitle.replace(/"/g, '""')}"`,
+              r.likelihood,
+              r.impact,
+              r.score,
+              `"${r.mitigation.replace(/"/g, '""')}"`,
+              `"${r.contingency.replace(/"/g, '""')}"`
+          ]);
+          const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+          const blob = new Blob([csvContent], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'syndicate-risk-matrix.csv';
+          a.click();
+          URL.revokeObjectURL(url);
+      }
+  };
+
+  if (!data) return null;
+
+  // Helper to split assumptions for the 2-column layout
+  const splitIndex = Math.ceil(data.assumptions.length / 2);
+  const leftAssumptions = data.assumptions.slice(0, splitIndex);
+  const rightAssumptions = data.assumptions.slice(splitIndex);
+
   return (
     <div className="flex flex-col min-h-screen lg:ml-20 bg-off-white">
       <Sidebar />
-      <main className="flex-1 min-w-0 border-r border-border-hairline selection:bg-charcoal/10 selection:text-charcoal w-full">
-        <Header />
+      <main className="flex-1 min-w-0 border-r border-border-hairline selection:bg-charcoal/10 selection:text-charcoal w-full relative">
+        <Header onExport={handleExport} />
         
+        {/* Editor Toggle Button (Fixed Position) */}
+        <button 
+            onClick={() => setIsEditorOpen(true)}
+            className="fixed bottom-8 right-8 z-50 bg-charcoal text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center gap-2 group"
+        >
+            <span className="material-symbols-outlined">edit_document</span>
+            <span className="w-0 overflow-hidden group-hover:w-auto group-hover:pl-2 transition-all font-mono text-xs uppercase tracking-widest whitespace-nowrap">Edit Raw Data</span>
+        </button>
+
+        {/* Editor Modal */}
+        {isEditorOpen && (
+            <div className="fixed inset-0 z-[60] bg-charcoal/80 backdrop-blur-sm flex items-center justify-center p-4 md:p-12">
+                <div className="bg-white w-full max-w-4xl h-full max-h-[90vh] flex flex-col shadow-2xl rounded-sm overflow-hidden animate-fade-in">
+                    <div className="flex justify-between items-center p-6 border-b border-border-hairline bg-off-white">
+                        <h3 className="font-serif text-xl text-charcoal">Edit Strategic Dossier</h3>
+                        <div className="flex gap-4">
+                            <button onClick={() => setIsEditorOpen(false)} className="text-charcoal-muted hover:text-charcoal font-mono text-xs uppercase tracking-widest">Cancel</button>
+                            <button onClick={applyChanges} className="bg-charcoal text-white px-6 py-2 font-mono text-xs uppercase tracking-widest hover:bg-black transition-colors">Apply Changes</button>
+                        </div>
+                    </div>
+                    <div className="flex-1 p-0 relative">
+                        <textarea 
+                            value={rawText}
+                            onChange={handleTextChange}
+                            className="w-full h-full p-6 font-mono text-xs leading-relaxed resize-none focus:outline-none focus:ring-0 bg-white text-charcoal border-none"
+                            placeholder="Paste your raw dossier data here..."
+                            spellCheck={false}
+                        />
+                    </div>
+                    <div className="p-4 bg-off-white border-t border-border-hairline text-[10px] text-charcoal-muted font-mono">
+                        Supported Sections: ### RISK MATRIX, ### METRICS, ### ASSUMPTIONS, ### ROI CAPEX, ### ROI RETURNS, ### TEAM, ### MILESTONES, ### COMPLIANCE
+                    </div>
+                </div>
+            </div>
+        )}
+
         {/* Intro Hero */}
         <div className="w-full">
             <section className="px-4 md:px-8 lg:px-16 pt-16 md:pt-20 pb-12 border-b border-border-hairline bg-off-white">
@@ -51,36 +149,43 @@ function App() {
 
             {/* 01. Risk Matrix */}
             <SectionWrapper id="01" number="01" title="Comprehensive Risk Matrix (R1-R10)" bg="bg-white">
-                <RiskMatrix />
+                <RiskMatrix data={data.risks} />
             </SectionWrapper>
 
             {/* 02. Success Metrics */}
             <SectionWrapper id="02" number="02" title="Success Metrics Dashboard" bg="bg-off-white">
-                <MetricsDashboard />
+                <MetricsDashboard data={data.metrics} />
             </SectionWrapper>
 
             {/* 03. Assumptions */}
             <SectionWrapper id="03" number="03" title="Assumptions That Must Hold True" bg="bg-white">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16">
                     <div className="font-serif text-charcoal text-sm leading-8 text-justify">
-                        <p className="mb-6">
-                            <strong className="font-sans text-xs uppercase tracking-widest block mb-2 text-charcoal-muted">A1: AI Visibility Horizon</strong>
-                            The core thesis assumes that LLM commoditization will not accelerate to the point where foundational models (GPT-5, Claude 4) offer native, zero-shot capabilities that render our specialized fine-tuning obsolete within 24 months. We assume a "Last Mile" problem will persist in FinTech and Legal verticals, necessitating our middleware layer for compliance and context injection.
-                        </p>
-                        <p>
-                            <strong className="font-sans text-xs uppercase tracking-widest block mb-2 text-charcoal-muted">A2: Pricing Power Durability</strong>
-                            We assume enterprise clients will continue to pay a premium (&gt;30% vs generic tools) for data residency guarantees and auditable logic trails. If the market shifts entirely to a "race to the bottom" on token pricing, our margin structure will need immediate revision. Our model relies on value-based pricing, not cost-plus.
-                        </p>
+                        {leftAssumptions.map((item, idx) => (
+                             <div key={idx} className="mb-6">
+                                <strong className="font-sans text-xs uppercase tracking-widest block mb-2 text-charcoal-muted">
+                                    {item.id}: {item.title}
+                                </strong>
+                                <p>{item.content}</p>
+                            </div>
+                        ))}
                     </div>
                     <div className="font-serif text-charcoal text-sm leading-8 text-justify">
-                        <p className="mb-6">
-                            <strong className="font-sans text-xs uppercase tracking-widest block mb-2 text-charcoal-muted">A3: The Dashboard Moat</strong>
-                            We postulate that the UX/UI wrapper—specifically the "Success Metrics Dashboard"—provides stickiness beyond the underlying AI generation. If users bypass the dashboard to consume our API headlessly at scale, we lose the opportunity to cross-sell visualization features, reducing LTV by an estimated 40%.
-                        </p>
-                        <div className="bg-off-white border border-border-hairline p-6 mt-6">
-                            <span className="material-symbols-outlined text-charcoal mb-2">warning</span>
-                            <p className="text-xs italic text-charcoal-muted">"If any of these three pillars collapse, the Series A valuation target of $40M pre-money becomes mathematically indefensible."</p>
-                        </div>
+                        {rightAssumptions.map((item, idx) => (
+                             <div key={idx} className="mb-6">
+                                <strong className="font-sans text-xs uppercase tracking-widest block mb-2 text-charcoal-muted">
+                                    {item.id}: {item.title}
+                                </strong>
+                                <p>{item.content}</p>
+                            </div>
+                        ))}
+                        
+                        {data.assumptionWarning && (
+                            <div className="bg-off-white border border-border-hairline p-6 mt-6">
+                                <span className="material-symbols-outlined text-charcoal mb-2">warning</span>
+                                <p className="text-xs italic text-charcoal-muted">"{data.assumptionWarning}"</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </SectionWrapper>
@@ -94,34 +199,34 @@ function App() {
                         </p>
                         <div className="bg-off-white border border-border-hairline p-6 shadow-sm">
                             <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-charcoal-muted block mb-4">Net ROI Projection (Year 1)</span>
-                            <span className="text-5xl md:text-6xl font-light font-mono text-charcoal block mb-2">{roiProjections.year1}%</span>
+                            <span className="text-5xl md:text-6xl font-light font-mono text-charcoal block mb-2">{data.roiProjections.year1}%</span>
                             <span className="text-xs text-charcoal-muted">Conservative Estimate</span>
                         </div>
                         <div className="bg-charcoal text-white border border-charcoal p-6 mt-4 shadow-lg">
                             <span className="text-[10px] font-mono font-bold uppercase tracking-widest opacity-70 block mb-4">Net ROI Projection (Year 3)</span>
-                            <span className="text-5xl md:text-6xl font-light font-mono text-white block mb-2">{roiProjections.year3}%</span>
+                            <span className="text-5xl md:text-6xl font-light font-mono text-white block mb-2">{data.roiProjections.year3}%</span>
                             <span className="text-xs opacity-70">Optimistic Scale</span>
                         </div>
                     </div>
                     <div className="col-span-12 lg:col-span-8">
-                        <RoiTables />
+                        <RoiTables investmentData={data.roiInvestment} returnsData={data.roiReturns} />
                     </div>
                 </div>
             </SectionWrapper>
 
             {/* 05. Team */}
             <SectionWrapper id="05" number="05" title="Team Collaboration Model (Scaling)" bg="bg-off-white">
-                <TeamTable />
+                <TeamTable data={data.team} />
             </SectionWrapper>
 
             {/* 06. Milestones */}
             <SectionWrapper id="06" number="06" title="Milestone Summary Table (M1-M17)" bg="bg-white">
-                <MilestoneTable />
+                <MilestoneTable data={data.milestones} />
             </SectionWrapper>
 
             {/* 07. Compliance */}
             <SectionWrapper id="07" number="07" title="Compliance & Legal Technical Matrix" bg="bg-off-white">
-                <ComplianceGrid />
+                <ComplianceGrid data={data.compliance} />
             </SectionWrapper>
 
             {/* 08. Strategic Pivots */}
