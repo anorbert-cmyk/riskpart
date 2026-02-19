@@ -123,7 +123,7 @@ function App() {
                         />
                     </div>
                     <div className="p-4 bg-off-white border-t border-border-hairline text-[10px] text-charcoal-muted font-mono">
-                        Supported Sections: ### RISK MATRIX, ### METRICS, ### ASSUMPTIONS, ### ROI CAPEX, ### ROI RETURNS, ### TEAM, ### MILESTONES, ### COMPLIANCE
+                        Structured format: ### RISK MATRIX, ### METRICS, ### ASSUMPTIONS, ### ROI CAPEX, ### ROI RETURNS, ### TEAM, ### MILESTONES, ### COMPLIANCE &mdash; or paste plain text (business plan, strategy doc) and sections will be auto-classified.
                     </div>
                 </div>
             </div>

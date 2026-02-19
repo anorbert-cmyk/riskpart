@@ -1,5 +1,6 @@
 import { RiskItem, MetricItem, MilestoneItem, TeamRole, ComplianceItem } from '../types';
 import { RoiItem } from '../components/DashboardModules';
+import { parseNativeText } from './heuristicParser';
 
 export interface AssumptionItem {
     id: string;
@@ -33,21 +34,39 @@ export const defaultDossierData: ParsedDossierData = {
     roiProjections: { year1: 0, year3: 0 }
 };
 
+/**
+ * Auto-detect: if the text contains `### ` section headers → structured parser.
+ * Otherwise → heuristic keyword-scoring parser (no AI/API needed).
+ */
+const MAX_INPUT_BYTES = 512_000; // 512 KB hard limit — must match heuristicParser
+
 export const parseDossierText = (text: string): ParsedDossierData => {
+    if (!text.trim()) return { ...defaultDossierData };
+    if (text.length > MAX_INPUT_BYTES) {
+        throw new Error(`Input exceeds maximum allowed size (${MAX_INPUT_BYTES} bytes). Truncate your document and try again.`);
+    }
+
+    // Auto-detect: structured format uses "### SECTION" headers
+    const hasStructuredHeaders = /^### /m.test(text);
+    if (!hasStructuredHeaders) {
+        return parseNativeText(text);
+    }
+
+    // ─── Structured parser (original logic) ────────────────────
     const lines = text.split('\n');
     let currentSection = '';
-    const result: ParsedDossierData = { ...defaultDossierData };
-
-    // Reset arrays to ensure clean parse
-    result.risks = [];
-    result.metrics = [];
-    result.assumptions = [];
-    result.assumptionWarning = '';
-    result.roiInvestment = [];
-    result.roiReturns = [];
-    result.team = [];
-    result.milestones = [];
-    result.compliance = [];
+    const result: ParsedDossierData = {
+        risks: [],
+        metrics: [],
+        assumptions: [],
+        assumptionWarning: '',
+        roiInvestment: [],
+        roiReturns: [],
+        team: [],
+        milestones: [],
+        compliance: [],
+        roiProjections: { year1: 0, year3: 0 },
+    };
 
     // Helper to clean cell data
     const c = (s: string) => s?.trim() || '';
