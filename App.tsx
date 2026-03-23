@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar, Header } from './components/Navigation';
 import { RiskMatrix, MetricsDashboard, RoiTables, TeamTable, MilestoneTable, ComplianceGrid } from './components/DashboardModules';
 import { Footer } from './components/Footer';
+import { StitchStudio } from './components/StitchStudio';
 import { parseDossierText, generateDefaultRawText, ParsedDossierData } from './utils/dossierParser';
+
+export type AppView = 'dashboard' | 'stitch';
 
 interface SectionWrapperProps {
   id: string;
@@ -25,6 +28,7 @@ const SectionWrapper = ({ id, number, title, children, bg }: SectionWrapperProps
 );
 
 function App() {
+  const [view, setView] = useState<AppView>('stitch');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [rawText, setRawText] = useState(generateDefaultRawText());
   const [data, setData] = useState<ParsedDossierData | null>(null);
@@ -89,9 +93,14 @@ function App() {
 
   return (
     <div className="flex flex-col min-h-screen lg:ml-20 bg-off-white">
-      <Sidebar />
+      <Sidebar currentView={view} onNavigate={setView} />
       <main className="flex-1 min-w-0 border-r border-border-hairline selection:bg-charcoal/10 selection:text-charcoal w-full relative">
-        <Header onExport={handleExport} />
+        <Header onExport={handleExport} currentView={view} onNavigate={setView} />
+
+        {view === 'stitch' ? (
+          <StitchStudio />
+        ) : (
+          <>
         
         {/* Editor Toggle Button (Fixed Position) */}
         <button 
@@ -275,6 +284,8 @@ function App() {
             </section>
         </div>
         <Footer />
+        </>
+        )}
       </main>
     </div>
   );

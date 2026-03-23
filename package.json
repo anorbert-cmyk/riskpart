@@ -5,16 +5,24 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "npx tsx --watch server/index.ts",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/stitch-sdk": "^0.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

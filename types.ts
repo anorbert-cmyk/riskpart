@@ -42,3 +42,25 @@ export interface ComplianceItem {
     status: string;
     statusColor: 'green' | 'orange' | 'red' | 'gray';
 }
+
+// Stitch API types
+export type StitchDeviceType = 'MOBILE' | 'DESKTOP' | 'TABLET' | 'AGNOSTIC';
+export type StitchModelId = 'GEMINI_3_PRO' | 'GEMINI_3_FLASH';
+
+export interface StitchGenerateResult {
+    sessionId: string;
+    screenId: string;
+    projectId: string;
+    html: string;
+    imageUrl: string;
+}
+
+export interface StitchProject {
+    id: string;
+    data: {
+        name: string;
+        title?: string;
+        createTime: string;
+        updateTime: string;
+    };
+}
