@@ -1,6 +1,5 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -8,8 +7,20 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+
+// Lazy import to catch module-level errors
+import('./App').then(({ default: App }) => {
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}).catch((err) => {
+  root.render(
+    <div style={{ padding: 40, fontFamily: 'monospace', color: 'red' }}>
+      <h1>App failed to load</h1>
+      <pre>{String(err)}</pre>
+      <pre>{err?.stack}</pre>
+    </div>
+  );
+});
