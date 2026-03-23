@@ -45,7 +45,7 @@ export interface ComplianceItem {
 
 // Stitch API types
 export type StitchDeviceType = 'MOBILE' | 'DESKTOP' | 'TABLET' | 'AGNOSTIC';
-export type StitchModelId = 'GEMINI_3_PRO' | 'GEMINI_3_FLASH';
+export type StitchModelId = 'GEMINI_3_PRO' | 'GEMINI_3_FLASH' | 'GEMINI_3_1_PRO';
 
 export interface StitchGenerateResult {
     sessionId: string;
