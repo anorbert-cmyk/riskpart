@@ -11,7 +11,7 @@ export const StitchStudio = () => {
   const [prompt, setPrompt] = useState('');
   const [editPrompt, setEditPrompt] = useState('');
   const [deviceType, setDeviceType] = useState<StitchDeviceType>('DESKTOP');
-  const [modelId, setModelId] = useState<StitchModelId>('GEMINI_3_FLASH');
+  const [modelId, setModelId] = useState<StitchModelId>('GEMINI_3_1_PRO');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [current, setCurrent] = useState<StitchGenerateResult | null>(null);
@@ -126,6 +126,7 @@ export const StitchStudio = () => {
   const models: { id: StitchModelId; label: string }[] = [
     { id: 'GEMINI_3_FLASH', label: 'Flash' },
     { id: 'GEMINI_3_PRO', label: 'Pro' },
+    { id: 'GEMINI_3_1_PRO', label: '3.1 Pro' },
   ];
 
   return (

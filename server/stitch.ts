@@ -10,7 +10,15 @@ function nextSessionId(): string {
 }
 
 export type DeviceType = 'MOBILE' | 'DESKTOP' | 'TABLET' | 'AGNOSTIC';
-export type ModelId = 'GEMINI_3_PRO' | 'GEMINI_3_FLASH';
+export type ModelId = 'GEMINI_3_PRO' | 'GEMINI_3_FLASH' | 'GEMINI_3_1_PRO';
+
+type SdkModelId = 'GEMINI_3_PRO' | 'GEMINI_3_FLASH';
+
+function resolveSdkModel(modelId?: ModelId): SdkModelId | undefined {
+  if (!modelId) return undefined;
+  if (modelId === 'GEMINI_3_1_PRO') return 'GEMINI_3_PRO';
+  return modelId as SdkModelId;
+}
 
 export async function listProjects() {
   const projects = await stitch.projects();
@@ -29,7 +37,7 @@ export async function generateScreen(
   modelId?: ModelId
 ) {
   const project = stitch.project(projectId);
-  const screen = await project.generate(prompt, deviceType, modelId);
+  const screen = await project.generate(prompt, deviceType, resolveSdkModel(modelId));
 
   const sessionId = nextSessionId();
   screenStore.set(sessionId, screen);
@@ -51,7 +59,7 @@ export async function editScreen(
   const screen = screenStore.get(sessionId);
   if (!screen) throw new Error(`Session not found: ${sessionId}`);
 
-  const edited = await screen.edit(prompt, deviceType, modelId);
+  const edited = await screen.edit(prompt, deviceType, resolveSdkModel(modelId));
 
   // Replace old screen reference
   screenStore.set(sessionId, edited);

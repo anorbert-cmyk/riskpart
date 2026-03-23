@@ -45,34 +45,285 @@ export const RiskMatrix = ({ data }: { data: RiskItem[] }) => {
 };
 
 // --- Section 02: Metrics Dashboard ---
+
+const sparklineData: Record<string, number[]> = {
+    'MRR Growth': [60, 68, 65, 78, 82, 75, 88, 92, 85, 98, 105, 112, 108, 120, 128, 135, 142],
+    'Net Promoter Score': [62, 65, 60, 68, 70, 66, 72, 69, 74, 71, 73, 75, 72, 74, 73, 74, 74],
+    'Login Frequency': [2.8, 3.0, 3.1, 2.9, 3.3, 3.5, 3.4, 3.6, 3.8, 3.7, 3.9, 4.0, 3.8, 4.1, 4.0, 4.2, 4.2],
+};
+
+const gradientColors: Record<string, [string, string]> = {
+    'MRR Growth': ['#10b981', '#059669'],
+    'Net Promoter Score': ['#6366f1', '#4f46e5'],
+    'Login Frequency': ['#f59e0b', '#d97706'],
+};
+
+const Sparkline = ({ data, color, width = 100, height = 32 }: { data: number[]; color: string; width?: number; height?: number }) => {
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    const points = data.map((v, i) => {
+        const x = (i / (data.length - 1)) * width;
+        const y = height - ((v - min) / range) * (height - 4) - 2;
+        return `${x},${y}`;
+    }).join(' ');
+    const areaPoints = `0,${height} ${points} ${width},${height}`;
+    const gradientId = `spark-${color.replace('#', '')}`;
+    return (
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="flex-shrink-0" style={{ overflow: 'visible' }}>
+            <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+                    <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+                </linearGradient>
+            </defs>
+            <polygon points={areaPoints} fill={`url(#${gradientId})`} />
+            <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            {/* Animated dot at end */}
+            <circle cx={width} cy={parseFloat(points.split(' ').pop()!.split(',')[1])} r="2.5" fill={color}>
+                <animate attributeName="r" values="2.5;4;2.5" dur="2s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite" />
+            </circle>
+        </svg>
+    );
+};
+
+const ProgressRing = ({ percent, color, size = 48 }: { percent: number; color: string; size?: number }) => {
+    const strokeWidth = 3.5;
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (percent / 100) * circumference;
+    return (
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0" style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth={strokeWidth} />
+            <circle
+                cx={size / 2} cy={size / 2} r={radius} fill="none"
+                stroke={color} strokeWidth={strokeWidth}
+                strokeDasharray={circumference} strokeDashoffset={offset}
+                strokeLinecap="round"
+                style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
+            />
+        </svg>
+    );
+};
+
+const healthScore = 87;
+
 export const MetricsDashboard = ({ data }: { data: MetricItem[] }) => {
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {data.map((metric, idx) => (
-                <div key={idx} className="bg-white border border-border-hairline p-8 flex flex-col justify-between h-48 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-                    <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-charcoal-muted">{metric.label}</span>
-                        <span className="material-symbols-outlined text-charcoal text-lg opacity-50">{metric.icon}</span>
-                    </div>
-                    <div>
-                        <span className="text-4xl font-mono font-light text-charcoal block mb-1">
-                            {metric.value}
-                            {metric.label === "Login Frequency" && <span className="text-lg">/day</span>}
-                        </span>
-                        <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 border
-                                ${metric.deltaType === 'positive' ? 'text-green-700 bg-green-50 border-green-100' : 
-                                  metric.deltaType === 'neutral' ? 'text-charcoal bg-gray-100 border-gray-200' : 
-                                  'text-red-700 bg-red-50 border-red-100'}
-                            `}>
-                                {metric.delta}
+        <>
+            <style>{`
+                @keyframes metricsFadeInUp {
+                    from { opacity: 0; transform: translateY(24px) scale(0.98); }
+                    to { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                @keyframes metricsGradientShift {
+                    0% { background-position: 0% 50%; }
+                    50% { background-position: 100% 50%; }
+                    100% { background-position: 0% 50%; }
+                }
+                @keyframes metricsPulseGlow {
+                    0%, 100% { box-shadow: 0 0 4px 0px currentColor; }
+                    50% { box-shadow: 0 0 12px 2px currentColor; }
+                }
+                @keyframes metricsCountUp {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .metrics-card-entrance { animation: metricsFadeInUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+                .metrics-card-entrance:nth-child(1) { animation-delay: 0.1s; }
+                .metrics-card-entrance:nth-child(2) { animation-delay: 0.25s; }
+                .metrics-card-entrance:nth-child(3) { animation-delay: 0.4s; }
+                .metrics-hero-entrance { animation: metricsFadeInUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+                .metrics-value-entrance { animation: metricsCountUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 0.5s; }
+                .metrics-delta-glow { animation: metricsPulseGlow 3s ease-in-out infinite; }
+            `}</style>
+
+            <div
+                className="relative rounded-2xl p-6 md:p-8 overflow-hidden"
+                style={{
+                    background: 'linear-gradient(135deg, rgba(249,249,247,0.9) 0%, rgba(240,238,235,0.7) 50%, rgba(249,249,247,0.9) 100%)',
+                    backgroundSize: '200% 200%',
+                    animation: 'metricsGradientShift 12s ease infinite',
+                }}
+            >
+                {/* Subtle grid texture overlay */}
+                <div
+                    className="absolute inset-0 pointer-events-none opacity-[0.035]"
+                    style={{
+                        backgroundImage: 'radial-gradient(circle, #1A1A1A 0.5px, transparent 0.5px)',
+                        backgroundSize: '20px 20px',
+                    }}
+                />
+
+                {/* Hero Summary Bar */}
+                <div
+                    className="metrics-hero-entrance relative mb-8 rounded-xl overflow-hidden"
+                    style={{
+                        background: 'rgba(255,255,255,0.7)',
+                        backdropFilter: 'blur(12px)',
+                        WebkitBackdropFilter: 'blur(12px)',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.03)',
+                        border: '1px solid rgba(224,224,224,0.6)',
+                    }}
+                >
+                    <div className="flex flex-col md:flex-row items-center gap-6 p-6">
+                        {/* Health ring */}
+                        <div className="relative flex-shrink-0">
+                            <ProgressRing percent={healthScore} color="#10b981" size={64} />
+                            <span
+                                className="absolute inset-0 flex items-center justify-center font-mono text-sm font-bold text-charcoal"
+                                style={{ transform: 'rotate(0deg)' }}
+                            >
+                                {healthScore}
                             </span>
-                            <span className="text-[10px] text-charcoal-muted">{metric.subtext}</span>
+                        </div>
+                        <div className="flex-1 text-center md:text-left">
+                            <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-charcoal-muted mb-1">
+                                Portfolio Health Score
+                            </h3>
+                            <p className="font-serif text-sm text-charcoal-muted leading-relaxed">
+                                All systems nominal. Revenue trending above forecast with strong user engagement signals.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-4 flex-shrink-0">
+                            {/* Status indicators */}
+                            {[
+                                { label: 'Revenue', status: 'positive' },
+                                { label: 'Retention', status: 'positive' },
+                                { label: 'Engagement', status: 'positive' },
+                            ].map((s) => (
+                                <div key={s.label} className="flex items-center gap-1.5">
+                                    <span
+                                        className="block w-2 h-2 rounded-full"
+                                        style={{
+                                            backgroundColor: s.status === 'positive' ? '#10b981' : s.status === 'negative' ? '#ef4444' : '#f59e0b',
+                                            boxShadow: s.status === 'positive'
+                                                ? '0 0 6px 1px rgba(16,185,129,0.5)'
+                                                : s.status === 'negative'
+                                                ? '0 0 6px 1px rgba(239,68,68,0.5)'
+                                                : '0 0 6px 1px rgba(245,158,11,0.5)',
+                                        }}
+                                    />
+                                    <span className="font-mono text-[9px] uppercase tracking-wider text-charcoal-muted font-bold">
+                                        {s.label}
+                                    </span>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
-            ))}
-        </div>
+
+                {/* Metric Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
+                    {data.map((metric, idx) => {
+                        const colors = gradientColors[metric.label] || ['#6366f1', '#4f46e5'];
+                        const sparkData = sparklineData[metric.label] || [1, 2, 3, 4, 5];
+                        const ringPercent = metric.label === 'MRR Growth' ? 78 : metric.label === 'Net Promoter Score' ? 74 : 84;
+
+                        return (
+                            <div
+                                key={idx}
+                                className="metrics-card-entrance group relative rounded-xl overflow-hidden cursor-default"
+                                style={{
+                                    background: 'rgba(255,255,255,0.7)',
+                                    backdropFilter: 'blur(12px)',
+                                    WebkitBackdropFilter: 'blur(12px)',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03)',
+                                    border: '1px solid rgba(224,224,224,0.6)',
+                                    transition: 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
+                                }}
+                                onMouseEnter={(e) => {
+                                    const el = e.currentTarget as HTMLDivElement;
+                                    el.style.transform = 'translateY(-6px) scale(1.01)';
+                                    el.style.boxShadow = '0 4px 8px rgba(0,0,0,0.06), 0 16px 40px rgba(0,0,0,0.08)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    const el = e.currentTarget as HTMLDivElement;
+                                    el.style.transform = 'translateY(0) scale(1)';
+                                    el.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03)';
+                                }}
+                            >
+                                {/* Gradient left accent border */}
+                                <div
+                                    className="absolute left-0 top-0 bottom-0 w-[3px]"
+                                    style={{
+                                        background: `linear-gradient(180deg, ${colors[0]}, ${colors[1]})`,
+                                        borderRadius: '3px 0 0 3px',
+                                    }}
+                                />
+
+                                <div className="p-6 pl-7">
+                                    {/* Header row */}
+                                    <div className="flex justify-between items-start mb-5">
+                                        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-charcoal-muted">
+                                            {metric.label}
+                                        </span>
+                                        <div className="relative">
+                                            <span
+                                                className="material-symbols-outlined text-lg transition-transform duration-300 group-hover:scale-110"
+                                                style={{ color: colors[0], opacity: 0.6 }}
+                                            >
+                                                {metric.icon}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Value + Sparkline row */}
+                                    <div className="flex items-end justify-between mb-4 gap-3">
+                                        <div className="metrics-value-entrance">
+                                            <span className="text-[40px] leading-none font-mono font-light text-charcoal tracking-tight block">
+                                                {metric.value}
+                                            </span>
+                                            {metric.label === 'Login Frequency' && (
+                                                <span className="font-mono text-sm text-charcoal-muted font-light">/day</span>
+                                            )}
+                                        </div>
+                                        <div className="pb-1.5">
+                                            <Sparkline data={sparkData} color={colors[0]} width={90} height={28} />
+                                        </div>
+                                    </div>
+
+                                    {/* Delta badge + subtext + progress ring */}
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <span
+                                                className={`
+                                                    inline-flex items-center text-[10px] font-mono font-bold px-2 py-0.5 rounded-full
+                                                    ${metric.deltaType === 'positive'
+                                                        ? 'text-green-700 bg-green-50/80'
+                                                        : metric.deltaType === 'negative'
+                                                        ? 'text-red-700 bg-red-50/80'
+                                                        : 'text-charcoal-muted bg-gray-100/80'}
+                                                `}
+                                                style={{
+                                                    color: metric.deltaType === 'positive' ? '#059669' : metric.deltaType === 'negative' ? '#dc2626' : '#555555',
+                                                    boxShadow: metric.deltaType === 'positive'
+                                                        ? '0 0 8px 1px rgba(16,185,129,0.25)'
+                                                        : metric.deltaType === 'negative'
+                                                        ? '0 0 8px 1px rgba(239,68,68,0.25)'
+                                                        : '0 0 6px 1px rgba(0,0,0,0.06)',
+                                                }}
+                                            >
+                                                {metric.deltaType === 'positive' && '↑ '}
+                                                {metric.deltaType === 'negative' && '↓ '}
+                                                {metric.delta}
+                                            </span>
+                                            <span className="font-serif text-[11px] text-charcoal-muted italic">
+                                                {metric.subtext}
+                                            </span>
+                                        </div>
+                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                            <ProgressRing percent={ringPercent} color={colors[0]} size={32} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </>
     );
 };
 
