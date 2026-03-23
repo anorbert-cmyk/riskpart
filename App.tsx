@@ -9,8 +9,7 @@ import { AISetupFlow } from './components/builder/AISetupFlow';
 import { BuildingScreen } from './components/builder/BuildingScreen';
 import { FinalDashboard } from './components/builder/FinalDashboard';
 import { parseDossierText, generateDefaultRawText, ParsedDossierData } from './utils/dossierParser';
-
-export type AppView = 'dashboard' | 'stitch' | 'builder';
+import type { AppView } from './types/app';
 
 interface SectionWrapperProps {
   id: string;

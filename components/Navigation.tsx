@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { AppView } from '../App';
+import type { AppView } from '../types/app';
 
 interface SidebarProps {
     currentView: AppView;
