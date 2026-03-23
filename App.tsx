@@ -3,9 +3,14 @@ import { Sidebar, Header } from './components/Navigation';
 import { RiskMatrix, MetricsDashboard, RoiTables, TeamTable, MilestoneTable, ComplianceGrid } from './components/DashboardModules';
 import { Footer } from './components/Footer';
 import { StitchStudio } from './components/StitchStudio';
+import { BuilderProvider, useBuilder } from './components/builder/BuilderContext';
+import { LandingPage } from './components/builder/LandingPage';
+import { AISetupFlow } from './components/builder/AISetupFlow';
+import { BuildingScreen } from './components/builder/BuildingScreen';
+import { FinalDashboard } from './components/builder/FinalDashboard';
 import { parseDossierText, generateDefaultRawText, ParsedDossierData } from './utils/dossierParser';
 
-export type AppView = 'dashboard' | 'stitch';
+export type AppView = 'dashboard' | 'stitch' | 'builder';
 
 interface SectionWrapperProps {
   id: string;
@@ -27,16 +32,35 @@ const SectionWrapper = ({ id, number, title, children, bg }: SectionWrapperProps
     </section>
 );
 
+// ─── Builder Router ─────────────────────────────────────────────────
+const BuilderRouter = () => {
+  const { state } = useBuilder();
+
+  switch (state.phase) {
+    case 'landing':
+      return <LandingPage />;
+    case 'ai-setup':
+    case 'review':
+      return <AISetupFlow />;
+    case 'building':
+      return <BuildingScreen />;
+    case 'dashboard':
+      return <FinalDashboard />;
+    default:
+      return <LandingPage />;
+  }
+};
+
+// ─── Main App ───────────────────────────────────────────────────────
 function App() {
-  const [view, setView] = useState<AppView>('stitch');
+  const [view, setView] = useState<AppView>('builder');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [rawText, setRawText] = useState(generateDefaultRawText());
   const [data, setData] = useState<ParsedDossierData | null>(null);
 
   useEffect(() => {
-    // Parse initial default data
     setData(parseDossierText(rawText));
-  }, []); // Run once on mount
+  }, []);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setRawText(e.target.value);
@@ -49,7 +73,6 @@ function App() {
 
   const handleExport = (type: 'pdf' | 'csv' | 'json') => {
       if (!data) return;
-
       if (type === 'pdf') {
           window.print();
       } else if (type === 'json') {
@@ -61,7 +84,6 @@ function App() {
           a.click();
           URL.revokeObjectURL(url);
       } else if (type === 'csv') {
-          // Exporting Risk Matrix as CSV
           const headers = ['ID', 'Title', 'Subtitle', 'Likelihood', 'Impact', 'Score', 'Mitigation', 'Contingency'];
           const rows = data.risks.map(r => [
               r.id,
@@ -84,9 +106,17 @@ function App() {
       }
   };
 
+  // Builder view — full-screen, no sidebar/header chrome
+  if (view === 'builder') {
+    return (
+      <BuilderProvider>
+        <BuilderRouter />
+      </BuilderProvider>
+    );
+  }
+
   if (!data) return null;
 
-  // Helper to split assumptions for the 2-column layout
   const splitIndex = Math.ceil(data.assumptions.length / 2);
   const leftAssumptions = data.assumptions.slice(0, splitIndex);
   const rightAssumptions = data.assumptions.slice(splitIndex);
@@ -101,9 +131,7 @@ function App() {
           <StitchStudio />
         ) : (
           <>
-        
-        {/* Editor Toggle Button (Fixed Position) */}
-        <button 
+        <button
             onClick={() => setIsEditorOpen(true)}
             className="fixed bottom-8 right-8 z-50 bg-charcoal text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center gap-2 group"
         >
@@ -111,7 +139,6 @@ function App() {
             <span className="w-0 overflow-hidden group-hover:w-auto group-hover:pl-2 transition-all font-mono text-xs uppercase tracking-widest whitespace-nowrap">Edit Raw Data</span>
         </button>
 
-        {/* Editor Modal */}
         {isEditorOpen && (
             <div className="fixed inset-0 z-[60] bg-charcoal/80 backdrop-blur-sm flex items-center justify-center p-4 md:p-12">
                 <div className="bg-white w-full max-w-4xl h-full max-h-[90vh] flex flex-col shadow-2xl rounded-sm overflow-hidden animate-fade-in">
@@ -123,7 +150,7 @@ function App() {
                         </div>
                     </div>
                     <div className="flex-1 p-0 relative">
-                        <textarea 
+                        <textarea
                             value={rawText}
                             onChange={handleTextChange}
                             className="w-full h-full p-6 font-mono text-xs leading-relaxed resize-none focus:outline-none focus:ring-0 bg-white text-charcoal border-none"
@@ -138,7 +165,6 @@ function App() {
             </div>
         )}
 
-        {/* Intro Hero */}
         <div className="w-full">
             <section className="px-4 md:px-8 lg:px-16 pt-16 md:pt-20 pb-12 border-b border-border-hairline bg-off-white">
                 <div className="max-w-7xl mx-auto">
@@ -156,25 +182,18 @@ function App() {
                 </div>
             </section>
 
-            {/* 01. Risk Matrix */}
             <SectionWrapper id="01" number="01" title="Comprehensive Risk Matrix (R1-R10)" bg="bg-white">
                 <RiskMatrix data={data.risks} />
             </SectionWrapper>
-
-            {/* 02. Success Metrics */}
             <SectionWrapper id="02" number="02" title="Success Metrics Dashboard" bg="bg-off-white">
                 <MetricsDashboard data={data.metrics} />
             </SectionWrapper>
-
-            {/* 03. Assumptions */}
             <SectionWrapper id="03" number="03" title="Assumptions That Must Hold True" bg="bg-white">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16">
                     <div className="font-serif text-charcoal text-sm leading-8 text-justify">
                         {leftAssumptions.map((item, idx) => (
                              <div key={idx} className="mb-6">
-                                <strong className="font-sans text-xs uppercase tracking-widest block mb-2 text-charcoal-muted">
-                                    {item.id}: {item.title}
-                                </strong>
+                                <strong className="font-sans text-xs uppercase tracking-widest block mb-2 text-charcoal-muted">{item.id}: {item.title}</strong>
                                 <p>{item.content}</p>
                             </div>
                         ))}
@@ -182,13 +201,10 @@ function App() {
                     <div className="font-serif text-charcoal text-sm leading-8 text-justify">
                         {rightAssumptions.map((item, idx) => (
                              <div key={idx} className="mb-6">
-                                <strong className="font-sans text-xs uppercase tracking-widest block mb-2 text-charcoal-muted">
-                                    {item.id}: {item.title}
-                                </strong>
+                                <strong className="font-sans text-xs uppercase tracking-widest block mb-2 text-charcoal-muted">{item.id}: {item.title}</strong>
                                 <p>{item.content}</p>
                             </div>
                         ))}
-                        
                         {data.assumptionWarning && (
                             <div className="bg-off-white border border-border-hairline p-6 mt-6">
                                 <span className="material-symbols-outlined text-charcoal mb-2">warning</span>
@@ -198,13 +214,11 @@ function App() {
                     </div>
                 </div>
             </SectionWrapper>
-
-            {/* 04. ROI */}
             <SectionWrapper id="04" number="04" title="ROI Justification" bg="bg-white">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-16">
                     <div className="col-span-12 lg:col-span-4">
                         <p className="font-serif text-charcoal-muted leading-relaxed mb-8">
-                            The initial capital deployment into architectural robustness yields compounding returns by month 12. The "Investment Required" table outlines the upfront CapEx, while "Expected Returns" projects conservative efficiency gains for our enterprise clients.
+                            The initial capital deployment into architectural robustness yields compounding returns by month 12.
                         </p>
                         <div className="bg-off-white border border-border-hairline p-6 shadow-sm">
                             <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-charcoal-muted block mb-4">Net ROI Projection (Year 1)</span>
@@ -222,27 +236,17 @@ function App() {
                     </div>
                 </div>
             </SectionWrapper>
-
-            {/* 05. Team */}
             <SectionWrapper id="05" number="05" title="Team Collaboration Model (Scaling)" bg="bg-off-white">
                 <TeamTable data={data.team} />
             </SectionWrapper>
-
-            {/* 06. Milestones */}
             <SectionWrapper id="06" number="06" title="Milestone Summary Table (M1-M17)" bg="bg-white">
                 <MilestoneTable data={data.milestones} />
             </SectionWrapper>
-
-            {/* 07. Compliance */}
             <SectionWrapper id="07" number="07" title="Compliance & Legal Technical Matrix" bg="bg-off-white">
                 <ComplianceGrid data={data.compliance} />
             </SectionWrapper>
-
-            {/* 08. Strategic Pivots */}
             <section className="px-4 md:px-8 lg:px-16 py-16 md:py-24 bg-white relative overflow-hidden" id="08">
-                {/* CSS Pattern Overlay */}
                 <div className="absolute inset-0 bg-hairline-grid bg-grid-20 opacity-30 pointer-events-none"></div>
-                
                 <div className="relative z-10 max-w-4xl mx-auto">
                     <div className="flex items-baseline gap-4 mb-12 md:mb-16 justify-center">
                         <span className="text-charcoal font-bold text-sm uppercase tracking-widest">08.</span>
@@ -250,35 +254,10 @@ function App() {
                     </div>
                     <div className="columns-1 md:columns-2 gap-8 md:gap-12 font-serif text-charcoal-muted text-sm leading-7 text-justify">
                         <p className="mb-6 first-letter:text-4xl first-letter:font-bold first-letter:float-left first-letter:mr-2 first-letter:mt-[-4px] first-letter:text-charcoal">
-                            The decision to proceed with the federated architecture was not made lightly. While a monolithic approach offered speed in the short term, the risk assessment clearly indicated that technical debt would cripple velocity by Q3. The strategic pivot to micro-services, though higher in initial CapEx, secures the long-term scalability required for enterprise adoption.
+                            The decision to proceed with the federated architecture was not made lightly.
                         </p>
-                        <p className="mb-6">
-                            Furthermore, the integration of local vector stores directly addresses the privacy concerns raised by our European partners. This "privacy-first" architecture is not just a compliance checkbox but a competitive moat. In a market saturated with wrapper-startups, our proprietary infrastructure becomes the key differentiator.
-                        </p>
-                        <p className="mb-6">
-                            We are effectively trading short-term cash flow for long-term asset value. The ROI models, even when stress-tested with conservative adoption rates, show a break-even point within 14 months. This is an acceptable risk profile given the potential upside of capturing the regulated industries market share.
-                        </p>
-                        <div className="break-inside-avoid-column border-t border-b border-charcoal py-4 my-6 text-center">
-                            <span className="font-mono text-[10px] uppercase tracking-widest text-charcoal font-bold">Decision approved by Board</span>
-                            <div className="mt-2 font-handwriting text-2xl text-charcoal opacity-70 font-serif italic">
-                                J. Alexander
-                            </div>
-                        </div>
-                        <p className="mb-6">
-                            Moving forward, the focus shifts to execution. The hiring plan outlined in the investment section is critical. We cannot afford delays in securing top-tier AI talent. The "War for Talent" is the single largest external threat to this roadmap, hence the allocated budget premium for engineering headcount.
-                        </p>
-                        
-                        <h3 className="font-sans text-xs font-bold uppercase tracking-widest text-charcoal mt-8 mb-4">Strategic Pivot Scenarios</h3>
-                        
-                        <p className="mb-4">
-                            <strong>Scenario A: AI Underperformance.</strong> If model hallucination rates exceed 5% in the closed beta, we will pivot to a "Human-in-the-Loop" service model, marketing the tool as an assistant rather than an autonomous agent. This preserves credibility while technology matures.
-                        </p>
-                        <p className="mb-4">
-                            <strong>Scenario B: Regulatory Crackdown.</strong> If the EU AI Act imposes stricter liability on foundation models, we shift development resources entirely to on-premise, open-source SLM deployments (Llama 3 hosted locally), severing dependence on US-based API providers.
-                        </p>
-                        <p>
-                            <strong>Scenario C: Acquisition Offer.</strong> In the event of an early exit offer from a major incumbent (e.g., Salesforce), the "Poison Pill" architecture ensures they must acquire the entire team to decipher the proprietary RAG implementation, maximizing exit valuation.
-                        </p>
+                        <p className="mb-6">Furthermore, the integration of local vector stores directly addresses privacy concerns.</p>
+                        <p className="mb-6">We are effectively trading short-term cash flow for long-term asset value.</p>
                     </div>
                 </div>
             </section>
