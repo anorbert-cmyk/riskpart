@@ -1,9 +1,19 @@
 import React from 'react';
 
-// ─── Shared Widget Shell ────────────────────────────────────────────
+// ─── Shared Widget Shell (theme-aware via CSS variable overrides) ───
 const WidgetShell = ({ title, icon, children, className = '' }: { title: string; icon: string; children: React.ReactNode; className?: string }) => (
-  <div className={`bg-white border border-border-hairline overflow-hidden group ${className}`}>
-    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border-hairline bg-off-white/50">
+  <div
+    className={`bg-white overflow-hidden group transition-all ${className}`}
+    style={{
+      borderRadius: 'var(--theme-radius, 2px)',
+      boxShadow: 'var(--theme-shadow, none)',
+      border: '1px solid var(--theme-border, rgba(0,0,0,0.06))',
+    }}
+  >
+    <div
+      className="flex items-center gap-2 px-4 py-2.5 bg-off-white/50"
+      style={{ borderBottom: '1px solid var(--theme-border, rgba(0,0,0,0.06))' }}
+    >
       <span className="material-symbols-outlined text-sm text-charcoal-muted">{icon}</span>
       <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-charcoal">{title}</span>
       <div className="flex-1" />

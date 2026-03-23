@@ -4,6 +4,7 @@ import { RiskMatrix, MetricsDashboard, RoiTables, TeamTable, MilestoneTable, Com
 import { Footer } from './components/Footer';
 import { StitchStudio } from './components/StitchStudio';
 import { BuilderProvider, useBuilder } from './components/builder/BuilderContext';
+import { ThemeProvider } from './components/builder/ThemeContext';
 import { LandingPage } from './components/builder/LandingPage';
 import { AISetupFlow } from './components/builder/AISetupFlow';
 import { BuildingScreen } from './components/builder/BuildingScreen';
@@ -109,7 +110,9 @@ function App() {
   if (view === 'builder') {
     return (
       <BuilderProvider>
-        <BuilderRouter />
+        <ThemeProvider>
+          <BuilderRouter />
+        </ThemeProvider>
       </BuilderProvider>
     );
   }

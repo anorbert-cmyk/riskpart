@@ -2,9 +2,11 @@ import React from 'react';
 import { useBuilder } from './BuilderContext';
 import { ChatInterface } from './ChatInterface';
 import { DashboardPreview } from './DashboardPreview';
+import { StepTracker, AgentActivity } from './StepTracker';
 
 export const AISetupFlow = () => {
   const { state, setPhase } = useBuilder();
+  const isProcessing = state.currentStep >= 10; // AI recommendation phase
 
   return (
     <div className="h-screen flex flex-col bg-[#FAFAF8]">
@@ -40,9 +42,18 @@ export const AISetupFlow = () => {
           <DashboardPreview />
         </div>
 
-        {/* Right: Chat */}
-        <div className="w-full lg:w-[440px] xl:w-[480px] shrink-0">
-          <ChatInterface />
+        {/* Right: Step Tracker + Chat */}
+        <div className="w-full lg:w-[440px] xl:w-[480px] shrink-0 flex flex-col">
+          {/* Step progress tracker - always visible */}
+          <StepTracker />
+
+          {/* Agent activity indicator - shows during AI processing */}
+          <AgentActivity isActive={isProcessing} />
+
+          {/* Chat interface - fills remaining space */}
+          <div className="flex-1 min-h-0">
+            <ChatInterface />
+          </div>
         </div>
       </div>
     </div>

@@ -56,6 +56,7 @@ interface BuilderContextType {
   startBuild: () => void;
   resetBuilder: () => void;
   activateComponentsBulk: (ids: string[]) => void;
+  reorderComponents: (fromIndex: number, toIndex: number) => void;
 }
 
 const BuilderContext = createContext<BuilderContextType | null>(null);
@@ -187,6 +188,15 @@ export const BuilderProvider = ({ children }: { children: React.ReactNode }) => 
     }, 400);
   }, []);
 
+  const reorderComponents = useCallback((fromIndex: number, toIndex: number) => {
+    setState((s) => {
+      const arr = [...s.activeComponents];
+      const [moved] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, moved);
+      return { ...s, activeComponents: arr };
+    });
+  }, []);
+
   const resetBuilder = useCallback(() => {
     setState(initialState);
   }, []);
@@ -196,7 +206,7 @@ export const BuilderProvider = ({ children }: { children: React.ReactNode }) => 
       state, setPhase, setStep, updateProfile, updatePreferences, addMessage,
       activateComponent, deactivateComponent, setComponentPriority,
       toggleColumn, toggleAlert, setEditPanelOpen, applyRolePreset,
-      startBuild, resetBuilder, activateComponentsBulk,
+      startBuild, resetBuilder, activateComponentsBulk, reorderComponents,
     }}>
       {children}
     </BuilderContext.Provider>

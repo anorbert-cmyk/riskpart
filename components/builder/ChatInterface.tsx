@@ -311,28 +311,15 @@ export const ChatInterface = () => {
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Chat header */}
-      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-black/[0.06] bg-[#FAFAF8]">
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-black/[0.06] bg-[#FAFAF8]">
         <div className="w-7 h-7 rounded-full bg-charcoal flex items-center justify-center">
           <span className="material-symbols-outlined text-white text-xs">auto_awesome</span>
         </div>
         <div>
           <span className="text-[10px] font-mono font-bold uppercase tracking-[0.15em] text-charcoal block leading-tight">Dashboard Assistant</span>
           <span className="text-[8px] font-mono text-charcoal-muted">
-            Step {Math.min(state.currentStep + 1, SETUP_STEPS.length)} of {SETUP_STEPS.length}
-            {SETUP_STEPS[state.currentStep] && ` — ${SETUP_STEPS[state.currentStep].title}`}
+            {SETUP_STEPS[state.currentStep] ? SETUP_STEPS[state.currentStep].title : 'Ready'}
           </span>
-        </div>
-        <div className="flex-1" />
-        {/* Step progress dots */}
-        <div className="hidden lg:flex gap-1">
-          {SETUP_STEPS.slice(0, 11).map((s, i) => (
-            <div
-              key={s.id}
-              className={`w-1.5 h-1.5 rounded-full transition-all ${
-                i < state.currentStep ? 'bg-charcoal' : i === state.currentStep ? 'bg-charcoal scale-125' : 'bg-charcoal/15'
-              }`}
-            />
-          ))}
         </div>
       </div>
 
