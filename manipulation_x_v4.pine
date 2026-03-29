@@ -658,15 +658,19 @@ f_getTP(int dir) =>
                     tp1 := eq.price
                 else if na(tp2) or eq.price > tp2
                     tp2 := eq.price
-    // Add PDH/PDL as targets
+    // Add PDH/PDL as targets (insert into correct TP1/TP2 position)
     if dir == 1 and not na(prevDayHigh) and prevDayHigh > close
         if na(tp1) or prevDayHigh < tp1
             tp2 := tp1
             tp1 := prevDayHigh
+        else if na(tp2) or prevDayHigh < tp2
+            tp2 := prevDayHigh
     if dir == -1 and not na(prevDayLow) and prevDayLow < close
         if na(tp1) or prevDayLow > tp1
             tp2 := tp1
             tp1 := prevDayLow
+        else if na(tp2) or prevDayLow > tp2
+            tp2 := prevDayLow
     [tp1, tp2]
 
 // Draw SL/TP/Entry lines
