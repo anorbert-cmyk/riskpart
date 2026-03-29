@@ -535,13 +535,13 @@ if i_showMacros and inMacro
 // --- Session Backgrounds ---
 if i_showSessBg
     if f_inOverlapSess()
-        bgcolor(i_overlapColor, title = "London-NY Overlap")
+        bgcolor(i_overlapColor)
     else if f_inNYSess()
-        bgcolor(i_nySessColor, title = "New York Session")
+        bgcolor(i_nySessColor)
     else if f_inLondonSess()
-        bgcolor(i_londonSessColor, title = "London Session")
+        bgcolor(i_londonSessColor)
     else if f_inAsiaSess()
-        bgcolor(i_asiaSessColor, title = "Asia/Tokyo Session")
+        bgcolor(i_asiaSessColor)
 
 // ============================================================================
 // SECTION 14: SIGNAL GENERATION
