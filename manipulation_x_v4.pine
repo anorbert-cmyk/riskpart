@@ -1233,9 +1233,6 @@ if smtEnabled
         if not na(smtPrevMyLow) and smtMyPL < smtPrevMyLow
             if not na(smtCorrPL) and not na(smtPrevMyCorrLow) and smtCorrPL >= smtPrevMyCorrLow
                 bullishSMT := true
-            else if na(smtCorrPL) and not na(smtPrevMyCorrLow)
-                // Correlated didn't even confirm a new pivot low = divergence
-                bullishSMT := true
         smtPrevMyLow := smtMyPL
 
     if not na(smtCorrPL)
@@ -1253,9 +1250,14 @@ if smtEnabled
 
     // --- Draw SMT labels ---
     if bullishSMT and i_showSMT
-        label.new(bar_index - i_smtPivotLen, low[i_smtPivotLen], "SMT", style = label.style_label_up, color = i_smtBullColor, textcolor = color.white, size = size.small)
+        smtLabels.push(label.new(bar_index - i_smtPivotLen, low[i_smtPivotLen], "SMT", style = label.style_label_up, color = i_smtBullColor, textcolor = color.white, size = size.small))
     if bearishSMT and i_showSMT
-        label.new(bar_index - i_smtPivotLen, high[i_smtPivotLen], "SMT", style = label.style_label_down, color = i_smtBearColor, textcolor = color.white, size = size.small)
+        smtLabels.push(label.new(bar_index - i_smtPivotLen, high[i_smtPivotLen], "SMT", style = label.style_label_down, color = i_smtBearColor, textcolor = color.white, size = size.small))
+
+// Cap SMT labels to prevent label leak
+while smtLabels.size() > 50
+    old = smtLabels.shift()
+    label.delete(old)
 
 // ============================================================================
 // SECTION 14: SIGNAL GENERATION
