@@ -47,6 +47,13 @@ i_eqTolerance       = input.float(0.03, "Equal H/L Tolerance (%)", minval = 0.01
 i_pivotLen          = input.int(5, "Pivot Lookback", minval = 2, maxval = 20, group = "Liquidity")
 i_eqColor           = input.color(color.new(color.yellow, 30), "Equal Level Color", group = "Liquidity")
 
+// --- SMT Divergence ---
+i_showSMT           = input.bool(true, "Show SMT Divergence", group = "SMT Divergence")
+i_smtSymbol         = input.symbol("", "Correlated Symbol (e.g. ES1!)", group = "SMT Divergence")
+i_smtPivotLen       = input.int(5, "SMT Pivot Lookback", minval = 2, maxval = 20, group = "SMT Divergence")
+i_smtBullColor      = input.color(color.new(color.lime, 20), "Bullish SMT Color", group = "SMT Divergence")
+i_smtBearColor      = input.color(color.new(color.red, 20), "Bearish SMT Color", group = "SMT Divergence")
+
 // --- Session Settings ---
 i_sessFilter        = input.session("0930-1100", "Session Filter", group = "Session")
 i_useSess           = input.bool(true, "Use Session Filter", group = "Session")
@@ -153,6 +160,12 @@ var float prevDayLow    = na
 
 var line  ln_PDH        = na
 var line  ln_PDL        = na
+
+// --- SMT Divergence tracking (var at global scope for pivot history) ---
+var float smtPrevMyLow     = na
+var float smtPrevMyCorrLow = na
+var float smtPrevMyHigh    = na
+var float smtPrevCorrHigh  = na
 
 // --- Pre-Market H/L tracking (4:00–9:30 ET) ---
 var float preMarketHigh = na
@@ -848,6 +861,13 @@ bool ltf2BearFVG = ltf2BearFVG_raw == true
 // LTF2 (15m) zone data for plotting
 [ltf2H2, ltf2L2, ltf2H0, ltf2L0] = request.security(syminfo.tickerid, i_ltfTF2, [high[2], low[2], high, low])
 
+// --- SMT Divergence correlated data ---
+// request.security() must be called unconditionally at global scope (Pine v6 rule)
+// If no symbol is set, fall back to own symbol (result is unused when smtEnabled == false)
+string smtSym = str.length(i_smtSymbol) > 0 ? i_smtSymbol : syminfo.tickerid
+[smtHigh, smtLow] = request.security(smtSym, timeframe.period, [high, low])
+bool smtEnabled = i_showSMT and str.length(i_smtSymbol) > 0
+
 // ============================================================================
 // SECTION 13: MAIN EXECUTION
 // ============================================================================
@@ -1190,6 +1210,52 @@ if i_showSessBg
 bgcolor(_sessBgColor)
 
 // ============================================================================
+// SECTION 13B: SMT DIVERGENCE DETECTION
+// ============================================================================
+// Compares swing highs/lows between current symbol and correlated symbol.
+// Bullish SMT: current symbol makes a LOWER LOW but correlated holds a HIGHER LOW
+// Bearish SMT: current symbol makes a HIGHER HIGH but correlated holds a LOWER HIGH
+// Uses ta.pivothigh/pivotlow with confirmed pivots; var globals track previous values.
+
+bool bullishSMT = false
+bool bearishSMT = false
+
+// Pivot detection runs unconditionally (ta.pivot* must see every bar for accuracy)
+float smtMyPL   = ta.pivotlow(low, i_smtPivotLen, i_smtPivotLen)
+float smtMyPH   = ta.pivothigh(high, i_smtPivotLen, i_smtPivotLen)
+float smtCorrPL = ta.pivotlow(smtLow, i_smtPivotLen, i_smtPivotLen)
+float smtCorrPH = ta.pivothigh(smtHigh, i_smtPivotLen, i_smtPivotLen)
+
+if smtEnabled
+    // --- Bullish SMT: our new pivot low < previous, but correlated holds higher ---
+    if not na(smtMyPL)
+        if not na(smtPrevMyLow) and smtMyPL < smtPrevMyLow
+            if not na(smtCorrPL) and not na(smtPrevMyCorrLow) and smtCorrPL >= smtPrevMyCorrLow
+                bullishSMT := true
+        smtPrevMyLow := smtMyPL
+
+    if not na(smtCorrPL)
+        smtPrevMyCorrLow := smtCorrPL
+
+    // --- Bearish SMT: our new pivot high > previous, but correlated holds lower ---
+    if not na(smtMyPH)
+        if not na(smtPrevMyHigh) and smtMyPH > smtPrevMyHigh
+            if not na(smtCorrPH) and not na(smtPrevCorrHigh) and smtCorrPH <= smtPrevCorrHigh
+                bearishSMT := true
+            else if na(smtCorrPH) and not na(smtPrevCorrHigh)
+                bearishSMT := true
+        smtPrevMyHigh := smtMyPH
+
+    if not na(smtCorrPH)
+        smtPrevCorrHigh := smtCorrPH
+
+    // --- Draw SMT labels ---
+    if bullishSMT and i_showSMT
+        label.new(bar_index - i_smtPivotLen, low[i_smtPivotLen], "SMT", style = label.style_label_up, color = i_smtBullColor, textcolor = color.white, size = size.small)
+    if bearishSMT and i_showSMT
+        label.new(bar_index - i_smtPivotLen, high[i_smtPivotLen], "SMT", style = label.style_label_down, color = i_smtBearColor, textcolor = color.white, size = size.small)
+
+// ============================================================================
 // SECTION 14: SIGNAL GENERATION
 // ============================================================================
 
@@ -1222,7 +1288,8 @@ if sessionOK and i_showSignals and not sandwiched
 
 if bullReversal and totalSignals < i_maxSignals
     macroTag = inMacro ? " [" + f_currentMacroLabel() + "]" : ""
-    sig = Signal.new(bar_index, 1, "reversal", label.new(bar_index, low, "REV ▲" + macroTag, style = label.style_label_up, color = color.green, textcolor = color.white, size = size.normal))
+    smtTag   = smtEnabled and bullishSMT ? " [SMT]" : ""
+    sig = Signal.new(bar_index, 1, "reversal", label.new(bar_index, low, "REV ▲" + macroTag + smtTag, style = label.style_label_up, color = color.green, textcolor = color.white, size = size.normal))
     signalArr.push(sig)
     bullSigCount += 1
     totalSignals += 1
@@ -1254,7 +1321,8 @@ if bullReversal and totalSignals < i_maxSignals
 
 if bearReversal and totalSignals < i_maxSignals
     macroTag = inMacro ? " [" + f_currentMacroLabel() + "]" : ""
-    sig = Signal.new(bar_index, -1, "reversal", label.new(bar_index, high, "REV ▼" + macroTag, style = label.style_label_down, color = color.red, textcolor = color.white, size = size.normal))
+    smtTag   = smtEnabled and bearishSMT ? " [SMT]" : ""
+    sig = Signal.new(bar_index, -1, "reversal", label.new(bar_index, high, "REV ▼" + macroTag + smtTag, style = label.style_label_down, color = color.red, textcolor = color.white, size = size.normal))
     signalArr.push(sig)
     bearSigCount += 1
     totalSignals += 1
@@ -1343,12 +1411,14 @@ alertcondition(isBullFVG, "Bullish FVG", "ManipX: Bullish FVG on {{ticker}} {{in
 alertcondition(isBearFVG, "Bearish FVG", "ManipX: Bearish FVG on {{ticker}} {{interval}}")
 alertcondition(isBullSweep, "Bullish Sweep", "ManipX: Bullish liquidity sweep on {{ticker}} {{interval}}")
 alertcondition(isBearSweep, "Bearish Sweep", "ManipX: Bearish liquidity sweep on {{ticker}} {{interval}}")
+alertcondition(bullishSMT, "Bullish SMT Divergence", "ManipX: Bullish SMT divergence on {{ticker}} {{interval}}")
+alertcondition(bearishSMT, "Bearish SMT Divergence", "ManipX: Bearish SMT divergence on {{ticker}} {{interval}}")
 
 // ============================================================================
 // SECTION 16: DASHBOARD
 // ============================================================================
 
-var table dash = table.new(position.top_right, 2, 10, bgcolor = color.new(color.black, 30), border_width = 1)
+var table dash = table.new(position.top_right, 2, 11, bgcolor = color.new(color.black, 30), border_width = 1)
 
 if barstate.islast and i_showDashboard
     table.cell(dash, 0, 0, "Manipulation X v4", text_color = color.white, text_size = size.normal, bgcolor = color.new(color.blue, 60))
@@ -1408,13 +1478,19 @@ if barstate.islast and i_showDashboard
     table.cell(dash, 0, 8, "Bear Signals", text_color = color.white, text_size = size.tiny)
     table.cell(dash, 1, 8, str.tostring(bearSigCount), text_color = color.red, text_size = size.tiny)
 
+    // SMT Divergence
+    string smtText = not smtEnabled ? "OFF" : bullishSMT ? "BULL" : bearishSMT ? "BEAR" : "---"
+    color  smtClr  = not smtEnabled ? color.gray : bullishSMT ? i_smtBullColor : bearishSMT ? i_smtBearColor : color.gray
+    table.cell(dash, 0, 9, "SMT Diverg.", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 9, smtText, text_color = smtClr, text_size = size.tiny)
+
     // Session / Macro
     sessText = sessionOK ? "ACTIVE" : "CLOSED"
     sessClr  = sessionOK ? color.green : color.gray
     macroTxt = inMacro ? f_currentMacroLabel() : "---"
     macroClr = inMacro ? color.yellow : color.gray
-    table.cell(dash, 0, 9, "Session / Macro", text_color = color.white, text_size = size.tiny)
-    table.cell(dash, 1, 9, sessText + " | " + macroTxt, text_color = sessClr, text_size = size.tiny)
+    table.cell(dash, 0, 10, "Session / Macro", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 10, sessText + " | " + macroTxt, text_color = sessClr, text_size = size.tiny)
 
 // ============================================================================
 // END OF INDICATOR
