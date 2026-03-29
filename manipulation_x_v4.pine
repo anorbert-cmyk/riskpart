@@ -124,6 +124,7 @@ type EqLevel
     int     dir             // 1 = equal high, -1 = equal low
     bool    swept           // true once price has traded through and closed back
     line    ln              // the horizontal line drawn on chart
+    bool    confirmed = false  // true for confirmed equal pairs (dashed lines), false for raw pivots (dotted lines)
 
 // ============================================================================
 // SECTION 3: GLOBAL VARIABLES
@@ -465,7 +466,7 @@ f_updateEqLevels() =>
                     alreadyExistsH := true
                     break
         if not alreadyExistsH
-            newEq = EqLevel.new(ph, bar_index - i_pivotLen, 1, false, na)
+            newEq = EqLevel.new(ph, bar_index - i_pivotLen, 1, false, na, false)
             if i_showEqHL
                 newEq.ln := line.new(bar_index - i_pivotLen, ph, bar_index, ph,
                              color = i_eqColor, style = line.style_dotted, width = 1)
@@ -482,7 +483,7 @@ f_updateEqLevels() =>
                     alreadyExistsL := true
                     break
         if not alreadyExistsL
-            newEq = EqLevel.new(pl, bar_index - i_pivotLen, -1, false, na)
+            newEq = EqLevel.new(pl, bar_index - i_pivotLen, -1, false, na, false)
             if i_showEqHL
                 newEq.ln := line.new(bar_index - i_pivotLen, pl, bar_index, pl,
                              color = i_eqColor, style = line.style_dotted, width = 1)
@@ -551,8 +552,8 @@ f_noBlockingEqLevel(int dir) =>
     if eqLevels.size() > 0
         for i = 0 to eqLevels.size() - 1
             eq = eqLevels.get(i)
-            if eq.swept or na(eq.ln) or line.get_style(eq.ln) != line.style_dashed
-                continue  // Skip swept levels, unmatched pivots (no line), AND raw pivots (dotted) — only block on confirmed equal pairs (dashed)
+            if eq.swept or na(eq.ln) or not eq.confirmed
+                continue  // Skip swept levels, unmatched pivots (no line), AND raw pivots — only block on confirmed equal pairs
             float dist = math.abs(eq.price - close) / close * 100.0
             if dist > 2.0
                 continue  // Skip levels more than 2% away (too distant to be relevant)
@@ -589,7 +590,7 @@ f_detectEqLevels() =>
         line ln = na
         if matched and i_showEqHL
             ln := line.new(pivotBar, ph, pivotBar + 1, ph, color = i_eqColor, style = line.style_dashed, width = 1, extend = extend.right)
-        eqLevels.push(EqLevel.new(ph, pivotBar, 1, false, ln))
+        eqLevels.push(EqLevel.new(ph, pivotBar, 1, false, ln, matched))
     if not na(pl)
         int pivotBar = bar_index - i_pivotLen
         bool matched = false
@@ -603,7 +604,7 @@ f_detectEqLevels() =>
         line ln = na
         if matched and i_showEqHL
             ln := line.new(pivotBar, pl, pivotBar + 1, pl, color = i_eqColor, style = line.style_dashed, width = 1, extend = extend.right)
-        eqLevels.push(EqLevel.new(pl, pivotBar, -1, false, ln))
+        eqLevels.push(EqLevel.new(pl, pivotBar, -1, false, ln, matched))
     capEqLevelArray(eqLevels, 100)
 
 f_checkEqLevelSweeps() =>
