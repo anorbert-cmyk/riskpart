@@ -1,5 +1,5 @@
 // ============================================================================
-// Manipulation X v4 — Smart Money Concepts Indicator
+// Manipulation X v4 — ICT Scalping Indicator
 // Pine Script v6 | Multi-Timeframe FVG, Liquidity, and Signal Detection
 // ============================================================================
 //@version=6
@@ -395,7 +395,7 @@ isInOpposingFVG(int signalDir) =>
     result
 
 // ============================================================================
-// SECTION 9B: SANDWICHED-BETWEEN-FVGs FILTER (FIX J)
+// SECTION 9B: SANDWICHED-BETWEEN-FVGs FILTER
 // ============================================================================
 
 // Returns true when price is caught between a bullish HTF FVG below and a
@@ -635,7 +635,7 @@ var label lbl_beShort = na
 // The previous line for that direction is deleted before creating the new one
 // so the chart never shows stale BE levels from earlier signals.
 // ---------------------------------------------------------------------------
-// f_createBELevel: creates new BE line+label WITHOUT modifying globals (Pine v6 safe)
+// f_createBELevel: creates new BE line+label, returns [line, label]
 // Returns [newLine, newLabel] — caller assigns to global vars
 f_createBELevel(float lvl, string txt) =>
     newLn  = line.new(bar_index, lvl, bar_index + 1, lvl, color = i_beLevelColor, style = line.style_dashed, width = 2, extend = extend.right)
@@ -702,7 +702,7 @@ f_getTP(int dir) =>
             tp2 := prevDayLow
     [tp1, tp2]
 
-// f_createSLTPLines: creates new SL/TP/Entry lines WITHOUT modifying globals (Pine v6 safe)
+// f_createSLTPLines: creates new SL/TP/Entry lines, returns [entry, sl, tp1, tp2]
 // Returns [entryLine, slLine, tp1Line, tp2Line] — caller assigns to global vars
 f_createSLTPLines(int dir) =>
     line _entry = line.new(bar_index, close, bar_index + 20, close, color = color.white, style = line.style_solid, width = 1)
@@ -741,7 +741,7 @@ recentVShape(int dir, int lookback) =>
 // SECTION 11: SESSION LEVEL TRACKING
 // ============================================================================
 // NOTE: f_updateSessionLevels, f_drawSessionLines, f_updatePreMarketLevels
-// are inlined into main execution (Pine v6 cannot modify global vars in functions)
+// are inlined into main execution
 
 f_drawSessionOpen() =>
     if i_showSession and not na(sessionOpen)
@@ -790,7 +790,7 @@ f_checkAllSweeps() =>
 // Check if price is inside an HTF FVG of the given direction
 // dir = 1: check for bullish HTF FVG (confirms long setup)
 // dir = -1: check for bearish HTF FVG (confirms short setup)
-// NOTE: Must be defined BEFORE request.security() calls (Pine v6 requirement)
+// Checks if current price is inside an HTF FVG zone of the given direction
 f_isInsideHTFFVG(int dir) =>
     bool result = false
     // Check HTF1 (1H) FVG array
@@ -836,7 +836,7 @@ ltfBearFVG_raw = request.security(syminfo.tickerid, i_ltfTF, high < low[2])
 bool ltfBullFVG = ltfBullFVG_raw == true
 bool ltfBearFVG = ltfBearFVG_raw == true
 
-// LTF2 FVG reaction (15m) — FIX L
+// LTF2 FVG reaction (15m)
 ltf2BullFVG_raw = request.security(syminfo.tickerid, i_ltfTF2, low > high[2])
 ltf2BearFVG_raw = request.security(syminfo.tickerid, i_ltfTF2, high < low[2])
 bool ltf2BullFVG = ltf2BullFVG_raw == true
@@ -860,7 +860,7 @@ totalSignals := 0
 bool recentLTFBearFVG = ta.barssince(ltfBearFVG) <= 10 or ta.barssince(ltf2BearFVG) <= 10
 bool recentLTFBullFVG = ta.barssince(ltfBullFVG) <= 10 or ta.barssince(ltf2BullFVG) <= 10
 
-// --- Session Tracking (inlined — Pine v6 cannot modify global vars in functions) ---
+// --- Session Tracking ---
 bool _inSess = f_inRegularSession()
 bool newSession = _inSess and not _inSess[1]
 if newSession
@@ -1198,7 +1198,7 @@ bool bearReversal     = false
 bool bullContinuation = false
 bool bearContinuation = false
 
-// FIX J: evaluate sandwich filter once per bar — suppresses all signals when
+// Evaluate sandwich filter — suppresses all signals when
 // price is trapped between a bullish HTF FVG below and a bearish HTF FVG above
 bool sandwiched = f_isSandwiched()
 
@@ -1226,7 +1226,7 @@ if bullReversal and totalSignals < i_maxSignals
     signalArr.push(sig)
     bullSigCount += 1
     totalSignals += 1
-    // Draw break-even level + SL/TP (inline — Pine v6 global var safe)
+    // Draw break-even level + SL/TP
     if i_showBELevel
         float _beLvl1 = f_getInternalStructure(1)
         if not na(_beLvl1)
@@ -1285,7 +1285,7 @@ if bearReversal and totalSignals < i_maxSignals
         ln_tp2   := _t22
 
 // --- Continuation Signal ---
-// FIX L: fires when EITHER 5m (ltfBullFVG) OR 15m (ltf2BullFVG) FVG is present
+// Fires when either 5m or 15m LTF FVG is present with HTF alignment
 if sessionOK and i_showSignals and not sandwiched
     float avgRange = ta.atr(14)
     float safeAvg  = math.max(avgRange, syminfo.mintick)
