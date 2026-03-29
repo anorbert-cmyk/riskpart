@@ -808,22 +808,8 @@ f_isInsideHTFFVG(int dir) =>
                 if close >= gap.bottom and close <= gap.top
                     result := true
                     break
-    // Check LTF1 (5m) FVG array
-    if not result and ltfFVGArr.size() > 0
-        for i = ltfFVGArr.size() - 1 to 0
-            gap = ltfFVGArr.get(i)
-            if gap.active and gap.dir == dir
-                if close >= gap.bottom and close <= gap.top
-                    result := true
-                    break
-    // Check LTF2 (15m) FVG array
-    if not result and ltf2FVGArr.size() > 0
-        for i = ltf2FVGArr.size() - 1 to 0
-            gap = ltf2FVGArr.get(i)
-            if gap.active and gap.dir == dir
-                if close >= gap.bottom and close <= gap.top
-                    result := true
-                    break
+    // NOTE: LTF arrays intentionally excluded — this function checks only
+    // higher-timeframe (1H + 4H) FVGs for HTF delivery / context confirmation.
     result
 
 [htfHigh, htfLow, htfClose, htfOpen] = request.security(syminfo.tickerid, i_htfTF, [high, low, close, open])
@@ -1408,26 +1394,26 @@ if barstate.islast and i_showDashboard
     table.cell(dash, 1, 4, str.tostring(activeLTF), text_color = color.lime, text_size = size.tiny)
 
     // Total Sweeps
-    table.cell(dash, 0, 4, "Total Sweeps", text_color = color.white, text_size = size.tiny)
-    table.cell(dash, 1, 4, str.tostring(sweepArr.size()), text_color = color.orange, text_size = size.tiny)
+    table.cell(dash, 0, 5, "Total Sweeps", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 5, str.tostring(sweepArr.size()), text_color = color.orange, text_size = size.tiny)
 
     // V-Shapes
-    table.cell(dash, 0, 5, "V-Shapes", text_color = color.white, text_size = size.tiny)
-    table.cell(dash, 1, 5, str.tostring(vshapeArr.size()), text_color = color.purple, text_size = size.tiny)
+    table.cell(dash, 0, 6, "V-Shapes", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 6, str.tostring(vshapeArr.size()), text_color = color.purple, text_size = size.tiny)
 
     // Signals
-    table.cell(dash, 0, 6, "Bull Signals", text_color = color.white, text_size = size.tiny)
-    table.cell(dash, 1, 6, str.tostring(bullSigCount), text_color = color.green, text_size = size.tiny)
-    table.cell(dash, 0, 7, "Bear Signals", text_color = color.white, text_size = size.tiny)
-    table.cell(dash, 1, 7, str.tostring(bearSigCount), text_color = color.red, text_size = size.tiny)
+    table.cell(dash, 0, 7, "Bull Signals", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 7, str.tostring(bullSigCount), text_color = color.green, text_size = size.tiny)
+    table.cell(dash, 0, 8, "Bear Signals", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 8, str.tostring(bearSigCount), text_color = color.red, text_size = size.tiny)
 
     // Session / Macro
     sessText = sessionOK ? "ACTIVE" : "CLOSED"
     sessClr  = sessionOK ? color.green : color.gray
     macroTxt = inMacro ? f_currentMacroLabel() : "---"
     macroClr = inMacro ? color.yellow : color.gray
-    table.cell(dash, 0, 8, "Session / Macro", text_color = color.white, text_size = size.tiny)
-    table.cell(dash, 1, 8, sessText + " | " + macroTxt, text_color = sessClr, text_size = size.tiny)
+    table.cell(dash, 0, 9, "Session / Macro", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 9, sessText + " | " + macroTxt, text_color = sessClr, text_size = size.tiny)
 
 // ============================================================================
 // END OF INDICATOR
