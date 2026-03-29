@@ -1,0 +1,408 @@
+//@version=6
+indicator("Manipulation X v4", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// ─── INPUTS ───────────────────────────────────────────────────────────────────
+string  i_htfTF         = input.timeframe("60",    "HTF Timeframe",            group="Timeframes")
+string  i_ltfTF         = input.timeframe("5",     "LTF Timeframe",            group="Timeframes")
+bool    i_showFVG       = input.bool(true,          "Show FVGs",                group="Display")
+bool    i_showIFVG      = input.bool(true,          "Show IFVGs",               group="Display")
+bool    i_showSweeps    = input.bool(true,          "Show Liquidity Sweeps",    group="Display")
+bool    i_showVShape    = input.bool(true,          "Show V-Shape Patterns",    group="Display")
+bool    i_showSignals   = input.bool(true,          "Show Signals",             group="Display")
+bool    i_showDash      = input.bool(true,          "Show Dashboard",           group="Display")
+int     i_fvgMax        = input.int(50,             "Max FVGs Stored",          minval=10, maxval=200, group="Limits")
+int     i_vshapeLen     = input.int(5,              "V-Shape Lookback Bars",    minval=2,  maxval=20,  group="Logic")
+float   i_vshapeMom     = input.float(1.5,          "V-Shape Momentum Factor",  minval=1.0,maxval=5.0, step=0.1, group="Logic")
+float   i_sweepWickPct  = input.float(0.3,          "Sweep Wick % Threshold",   minval=0.1,maxval=1.0, step=0.05, group="Logic")
+string  i_sessFilter    = input.session("0930-1600", "Session Filter",          group="Session")
+bool    i_useSess       = input.bool(true,          "Use Session Filter",       group="Session")
+color   i_bullFVGColor  = input.color(color.new(color.green, 80),  "Bull FVG Color",  group="Colors")
+color   i_bearFVGColor  = input.color(color.new(color.red, 80),    "Bear FVG Color",  group="Colors")
+color   i_bullIFVGColor = input.color(color.new(color.teal, 75),   "Bull IFVG Color", group="Colors")
+color   i_bearIFVGColor = input.color(color.new(color.maroon, 75), "Bear IFVG Color", group="Colors")
+
+// ─── USER-DEFINED TYPES ──────────────────────────────────────────────────────
+type FVG
+    float   top
+    float   bottom
+    int     startBar
+    int     dir         // 1 = bullish, -1 = bearish
+    bool    active
+    bool    inversed
+    box     bx
+
+type Sweep
+    float   level
+    int     barIdx
+    int     dir         // 1 = bullish sweep (below), -1 = bearish sweep (above)
+
+type VShape
+    int     barIdx
+    int     dir         // 1 = bullish, -1 = bearish
+    float   momentum
+
+type Signal
+    int     barIdx
+    int     dir         // 1 = long, -1 = short
+    string  sigType     // "reversal" or "continuation"
+    label   lbl
+
+// ─── PERSISTENT VARIABLES ────────────────────────────────────────────────────
+var array<FVG>    fvgArr       = array.new<FVG>()
+var array<FVG>    ifvgArr      = array.new<FVG>()
+var array<Sweep>  sweepArr     = array.new<Sweep>()
+var array<VShape> vshapeArr    = array.new<VShape>()
+var array<Signal> signalArr    = array.new<Signal>()
+var int           bullSigCount = 0
+var int           bearSigCount = 0
+
+// ─── UTILITY FUNCTIONS ───────────────────────────────────────────────────────
+
+// Check if currently in session
+inSession() =>
+    not i_useSess or not na(time(timeframe.period, i_sessFilter))
+
+// Safe division avoiding divide-by-zero
+safeDivide(float numerator, float denominator) =>
+    denominator == 0.0 ? 0.0 : numerator / denominator
+
+// Cap array size and clean up old drawing objects
+capFVGArray(array<FVG> arr, int maxSize) =>
+    while arr.size() > maxSize
+        FVG old = arr.shift()
+        if not na(old.bx)
+            box.delete(old.bx)
+
+capSweepArray(array<Sweep> arr, int maxSize) =>
+    while arr.size() > maxSize
+        arr.shift()
+
+capVShapeArray(array<VShape> arr, int maxSize) =>
+    while arr.size() > maxSize
+        arr.shift()
+
+capSignalArray(array<Signal> arr, int maxSize) =>
+    while arr.size() > maxSize
+        Signal old = arr.shift()
+        if not na(old.lbl)
+            label.delete(old.lbl)
+
+// ─── FVG DETECTION ──────────────────────────────────────────────────────────
+
+detectFVG() =>
+    bool bullFVG = low > high[2]
+    bool bearFVG = high < low[2]
+    [bullFVG, bearFVG]
+
+// ─── IFVG DETECTION ─────────────────────────────────────────────────────────
+// Bearish FVG that gets closed above → becomes bullish IFVG (direction flips)
+// Bullish FVG that gets closed below → becomes bearish IFVG (direction flips)
+
+checkIFVG() =>
+    if fvgArr.size() > 0
+        for i = fvgArr.size() - 1 to 0
+            FVG fvg = fvgArr.get(i)
+            if fvg.active and not fvg.inversed
+                if fvg.dir == -1 and close > fvg.top
+                    // Bearish FVG closed above → bullish IFVG
+                    fvg.inversed := true
+                    fvg.active   := false
+                    if not na(fvg.bx)
+                        box.delete(fvg.bx)
+                    FVG ifvg = FVG.new(fvg.top, fvg.bottom, fvg.startBar, 1, true, true, na)
+                    if i_showIFVG
+                        ifvg.bx := box.new(fvg.startBar, fvg.top, bar_index, fvg.bottom, border_color=i_bullIFVGColor, bgcolor=i_bullIFVGColor)
+                    ifvgArr.push(ifvg)
+                else if fvg.dir == 1 and close < fvg.bottom
+                    // Bullish FVG closed below → bearish IFVG
+                    fvg.inversed := true
+                    fvg.active   := false
+                    if not na(fvg.bx)
+                        box.delete(fvg.bx)
+                    FVG ifvg = FVG.new(fvg.top, fvg.bottom, fvg.startBar, -1, true, true, na)
+                    if i_showIFVG
+                        ifvg.bx := box.new(fvg.startBar, fvg.top, bar_index, fvg.bottom, border_color=i_bearIFVGColor, bgcolor=i_bearIFVGColor)
+                    ifvgArr.push(ifvg)
+
+// ─── LIQUIDITY SWEEP DETECTION ──────────────────────────────────────────────
+// Sweep = wick through a level + close back inside
+
+detectSweeps(float prevHigh, float prevLow) =>
+    float totalRange = high - low
+    float safeRange  = math.max(totalRange, syminfo.mintick)
+    float upperWick  = high - math.max(open, close)
+    float lowerWick  = math.min(open, close) - low
+    // Bearish sweep: wick above prevHigh but close below
+    bool bearSweep = high > prevHigh and close < prevHigh and safeDivide(upperWick, safeRange) >= i_sweepWickPct
+    // Bullish sweep: wick below prevLow but close above
+    bool bullSweep = low < prevLow and close > prevLow and safeDivide(lowerWick, safeRange) >= i_sweepWickPct
+    [bullSweep, bearSweep]
+
+// ─── V-SHAPE DETECTION ─────────────────────────────────────────────────────
+// FVG inversed within N candles with sufficient momentum
+
+detectVShape() =>
+    bool bullV  = false
+    bool bearV  = false
+    float mom   = 0.0
+    if ifvgArr.size() > 0
+        FVG lastIFVG = ifvgArr.get(ifvgArr.size() - 1)
+        int barsSince = bar_index - lastIFVG.startBar
+        if barsSince <= i_vshapeLen and barsSince > 0
+            float avgRange = ta.atr(14)
+            float safeAvg  = math.max(avgRange, syminfo.mintick)
+            float currMove = math.abs(close - open)
+            mom := safeDivide(currMove, safeAvg)
+            if lastIFVG.dir == 1 and mom >= i_vshapeMom
+                bullV := true
+            else if lastIFVG.dir == -1 and mom >= i_vshapeMom
+                bearV := true
+    [bullV, bearV, mom]
+
+// ─── CHECK IF PRICE IS INSIDE AN OPPOSING FVG ──────────────────────────────
+
+isInOpposingFVG(int signalDir) =>
+    bool result = false
+    if fvgArr.size() > 0
+        for i = fvgArr.size() - 1 to 0
+            FVG fvg = fvgArr.get(i)
+            if fvg.active
+                if signalDir == 1 and fvg.dir == -1
+                    // Long signal inside bearish FVG → opposing
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+                else if signalDir == -1 and fvg.dir == 1
+                    // Short signal inside bullish FVG → opposing
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+    result
+
+// ─── RECENT EVENT LOOKBACK FUNCTIONS ────────────────────────────────────────
+
+// --- Recent sweep within last N bars ---
+recentSweep(int dir, int lookback) =>
+    bool found = false
+    if sweepArr.size() > 0
+        for i = sweepArr.size() - 1 to 0
+            Sweep s = sweepArr.get(i)
+            if s.dir == dir and (bar_index - s.barIdx) <= lookback
+                found := true
+                break
+    found
+
+// --- Recent V-shape within last N bars ---
+recentVShape(int dir, int lookback) =>
+    bool found = false
+    if vshapeArr.size() > 0
+        for i = vshapeArr.size() - 1 to 0
+            VShape vs = vshapeArr.get(i)
+            if vs.dir == dir and (bar_index - vs.barIdx) <= lookback
+                found := true
+                break
+    found
+
+// ─── HTF DATA VIA request.security() ────────────────────────────────────────
+// Must be at global scope — NOT inside functions or if blocks
+
+[htfHigh, htfLow, htfClose, htfOpen] = request.security(syminfo.tickerid, i_htfTF, [high, low, close, open])
+
+// HTF FVG detection at global scope
+htfBullFVG_raw = request.security(syminfo.tickerid, i_htfTF, low > high[2])
+htfBearFVG_raw = request.security(syminfo.tickerid, i_htfTF, high < low[2])
+bool htfBullFVG = not na(htfBullFVG_raw) ? htfBullFVG_raw : false
+bool htfBearFVG = not na(htfBearFVG_raw) ? htfBearFVG_raw : false
+
+// HTF delivery direction: is HTF in a bullish or bearish delivery?
+bool htfBullDelivery = not na(htfClose) and not na(htfOpen) ? htfClose > htfOpen : false
+bool htfBearDelivery = not na(htfClose) and not na(htfOpen) ? htfClose < htfOpen : false
+
+// LTF FVG reaction (FVG on LTF)
+ltfBullFVG_raw = request.security(syminfo.tickerid, i_ltfTF, low > high[2])
+ltfBearFVG_raw = request.security(syminfo.tickerid, i_ltfTF, high < low[2])
+bool ltfBullFVG = not na(ltfBullFVG_raw) ? ltfBullFVG_raw : false
+bool ltfBearFVG = not na(ltfBearFVG_raw) ? ltfBearFVG_raw : false
+
+// ─── MAIN EXECUTION ─────────────────────────────────────────────────────────
+
+bool sessionOK = inSession()
+
+// --- FVG Detection ---
+[isBullFVG, isBearFVG] = detectFVG()
+
+if isBullFVG and sessionOK
+    float fvgTop    = low
+    float fvgBottom = high[2]
+    box bx = na
+    if i_showFVG
+        bx := box.new(bar_index - 2, fvgTop, bar_index, fvgBottom, border_color=i_bullFVGColor, bgcolor=i_bullFVGColor)
+    FVG newFVG = FVG.new(fvgTop, fvgBottom, bar_index - 2, 1, true, false, bx)
+    fvgArr.push(newFVG)
+
+if isBearFVG and sessionOK
+    float fvgTop    = low[2]
+    float fvgBottom = high
+    box bx = na
+    if i_showFVG
+        bx := box.new(bar_index - 2, fvgTop, bar_index, fvgBottom, border_color=i_bearFVGColor, bgcolor=i_bearFVGColor)
+    FVG newFVG = FVG.new(fvgTop, fvgBottom, bar_index - 2, -1, true, false, bx)
+    fvgArr.push(newFVG)
+
+// --- Cap FVG Array ---
+capFVGArray(fvgArr, i_fvgMax)
+
+// --- Check for IFVGs ---
+checkIFVG()
+capFVGArray(ifvgArr, i_fvgMax)
+
+// --- Liquidity Sweep Detection ---
+float prevSwingHigh = ta.highest(high, 20)[1]
+float prevSwingLow  = ta.lowest(low, 20)[1]
+[isBullSweep, isBearSweep] = detectSweeps(prevSwingHigh, prevSwingLow)
+
+if isBullSweep and sessionOK
+    Sweep s = Sweep.new(prevSwingLow, bar_index, 1)
+    sweepArr.push(s)
+    if i_showSweeps
+        label.new(bar_index, low, "Sweep", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.tiny)
+
+if isBearSweep and sessionOK
+    Sweep s = Sweep.new(prevSwingHigh, bar_index, -1)
+    sweepArr.push(s)
+    if i_showSweeps
+        label.new(bar_index, high, "Sweep", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.tiny)
+
+capSweepArray(sweepArr, i_fvgMax)
+
+// --- V-Shape Detection ---
+[isBullV, isBearV, vMom] = detectVShape()
+
+if isBullV and sessionOK
+    VShape vs = VShape.new(bar_index, 1, vMom)
+    vshapeArr.push(vs)
+    if i_showVShape
+        label.new(bar_index, low, "V", style=label.style_label_up, color=color.teal, textcolor=color.white, size=size.tiny)
+
+if isBearV and sessionOK
+    VShape vs = VShape.new(bar_index, -1, vMom)
+    vshapeArr.push(vs)
+    if i_showVShape
+        label.new(bar_index, high, "V", style=label.style_label_down, color=color.maroon, textcolor=color.white, size=size.tiny)
+
+capVShapeArray(vshapeArr, i_fvgMax)
+
+// ─── SIGNAL GENERATION ──────────────────────────────────────────────────────
+
+// --- Reversal Signal ---
+// Requires: sweep + HTF delivery alignment + V-shape + not in opposing FVG
+bool bullReversal = false
+bool bearReversal = false
+
+if sessionOK and i_showSignals
+    // Bullish reversal: bullish sweep + HTF bearish delivery ending (contrarian) or bullish delivery + bullish V-shape
+    if recentSweep(1, i_vshapeLen) and htfBullDelivery and recentVShape(1, i_vshapeLen) and not isInOpposingFVG(1)
+        bullReversal := true
+    // Bearish reversal: bearish sweep + HTF bearish delivery + bearish V-shape
+    if recentSweep(-1, i_vshapeLen) and htfBearDelivery and recentVShape(-1, i_vshapeLen) and not isInOpposingFVG(-1)
+        bearReversal := true
+
+if bullReversal
+    Signal sig = Signal.new(bar_index, 1, "reversal", label.new(bar_index, low, "REV\n▲", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.normal))
+    signalArr.push(sig)
+    bullSigCount += 1
+
+if bearReversal
+    Signal sig = Signal.new(bar_index, -1, "reversal", label.new(bar_index, high, "REV\n▼", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.normal))
+    signalArr.push(sig)
+    bearSigCount += 1
+
+// --- Continuation Signal ---
+// Requires: LTF FVG reaction + not in opposing HTF FVG + momentum confirmation
+bool bullContinuation = false
+bool bearContinuation = false
+
+if sessionOK and i_showSignals
+    float avgRange = ta.atr(14)
+    float safeAvg  = math.max(avgRange, syminfo.mintick)
+    float momNow   = safeDivide(math.abs(close - open), safeAvg)
+    bool  momOK    = momNow >= 1.0
+
+    // Bullish continuation: LTF bullish FVG + not in bearish HTF FVG + momentum
+    if ltfBullFVG and not isInOpposingFVG(1) and momOK and not bullReversal
+        bullContinuation := true
+    // Bearish continuation: LTF bearish FVG + not in bullish HTF FVG + momentum
+    if ltfBearFVG and not isInOpposingFVG(-1) and momOK and not bearReversal
+        bearContinuation := true
+
+if bullContinuation
+    Signal sig = Signal.new(bar_index, 1, "continuation", label.new(bar_index, low, "CONT\n▲", style=label.style_label_up, color=color.lime, textcolor=color.black, size=size.small))
+    signalArr.push(sig)
+    bullSigCount += 1
+
+if bearContinuation
+    Signal sig = Signal.new(bar_index, -1, "continuation", label.new(bar_index, high, "CONT\n▼", style=label.style_label_down, color=color.orange, textcolor=color.black, size=size.small))
+    signalArr.push(sig)
+    bearSigCount += 1
+
+capSignalArray(signalArr, 200)
+
+// ─── EXTEND ACTIVE FVG/IFVG BOXES ──────────────────────────────────────────
+
+if fvgArr.size() > 0
+    for i = 0 to fvgArr.size() - 1
+        FVG fvg = fvgArr.get(i)
+        if fvg.active and not na(fvg.bx)
+            box.set_right(fvg.bx, bar_index)
+            // Mitigate FVG if price crosses through
+            if fvg.dir == 1 and close < fvg.bottom
+                fvg.active := false
+                box.set_bgcolor(fvg.bx, color.new(color.gray, 90))
+            else if fvg.dir == -1 and close > fvg.top
+                fvg.active := false
+                box.set_bgcolor(fvg.bx, color.new(color.gray, 90))
+
+if ifvgArr.size() > 0
+    for i = 0 to ifvgArr.size() - 1
+        FVG ifvg = ifvgArr.get(i)
+        if ifvg.active and not na(ifvg.bx)
+            box.set_right(ifvg.bx, bar_index)
+
+// ─── DASHBOARD ──────────────────────────────────────────────────────────────
+
+var table dash = table.new(position.top_right, 2, 7, bgcolor=color.new(color.black, 30), border_width=1)
+
+if barstate.islast and i_showDash
+    table.cell(dash, 0, 0, "Manipulation X v4",    text_color=color.white, text_size=size.normal, bgcolor=color.new(color.blue, 60))
+    table.cell(dash, 1, 0, "Dashboard",             text_color=color.white, text_size=size.normal, bgcolor=color.new(color.blue, 60))
+    table.cell(dash, 0, 1, "Active FVGs",           text_color=color.white, text_size=size.tiny)
+    int activeFVGs = 0
+    if fvgArr.size() > 0
+        for i = 0 to fvgArr.size() - 1
+            if fvgArr.get(i).active
+                activeFVGs += 1
+    table.cell(dash, 1, 1, str.tostring(activeFVGs), text_color=color.yellow, text_size=size.tiny)
+    table.cell(dash, 0, 2, "Active IFVGs",          text_color=color.white, text_size=size.tiny)
+    int activeIFVGs = 0
+    if ifvgArr.size() > 0
+        for i = 0 to ifvgArr.size() - 1
+            if ifvgArr.get(i).active
+                activeIFVGs += 1
+    table.cell(dash, 1, 2, str.tostring(activeIFVGs), text_color=color.teal, text_size=size.tiny)
+    table.cell(dash, 0, 3, "Total Sweeps",          text_color=color.white, text_size=size.tiny)
+    table.cell(dash, 1, 3, str.tostring(sweepArr.size()), text_color=color.orange, text_size=size.tiny)
+    table.cell(dash, 0, 4, "V-Shapes",              text_color=color.white, text_size=size.tiny)
+    table.cell(dash, 1, 4, str.tostring(vshapeArr.size()), text_color=color.purple, text_size=size.tiny)
+    table.cell(dash, 0, 5, "Bull Signals",           text_color=color.white, text_size=size.tiny)
+    table.cell(dash, 1, 5, str.tostring(bullSigCount), text_color=color.green, text_size=size.tiny)
+    table.cell(dash, 0, 6, "Bear Signals",           text_color=color.white, text_size=size.tiny)
+    table.cell(dash, 1, 6, str.tostring(bearSigCount), text_color=color.red, text_size=size.tiny)
+
+// ─── ALERT CONDITIONS (must be at global scope) ─────────────────────────────
+
+alertcondition(bullReversal,       "Bullish Reversal",      "ManipX: Bullish reversal signal detected")
+alertcondition(bearReversal,       "Bearish Reversal",      "ManipX: Bearish reversal signal detected")
+alertcondition(bullContinuation,   "Bullish Continuation",  "ManipX: Bullish continuation signal detected")
+alertcondition(bearContinuation,   "Bearish Continuation",  "ManipX: Bearish continuation signal detected")
+alertcondition(isBullFVG,          "Bullish FVG",           "ManipX: Bullish FVG detected")
+alertcondition(isBearFVG,          "Bearish FVG",           "ManipX: Bearish FVG detected")
