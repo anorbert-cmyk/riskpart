@@ -580,38 +580,12 @@ var label lbl_beShort = na
 // The previous line for that direction is deleted before creating the new one
 // so the chart never shows stale BE levels from earlier signals.
 // ---------------------------------------------------------------------------
-f_drawBELevel(int dir, float lvl) =>
-    if not na(lvl)
-        if dir == 1
-            if not na(ln_beLong)
-                line.delete(ln_beLong)
-            if not na(lbl_beLong)
-                label.delete(lbl_beLong)
-            ln_beLong := line.new(bar_index, lvl, bar_index + 1, lvl,
-                                  color  = i_beLevelColor,
-                                  style  = line.style_dashed,
-                                  width  = 2,
-                                  extend = extend.right)
-            lbl_beLong := label.new(bar_index, lvl, "BE ▲",
-                      style     = label.style_label_left,
-                      color     = color.new(i_beLevelColor, 30),
-                      textcolor = color.white,
-                      size      = size.tiny)
-        else
-            if not na(ln_beShort)
-                line.delete(ln_beShort)
-            if not na(lbl_beShort)
-                label.delete(lbl_beShort)
-            ln_beShort := line.new(bar_index, lvl, bar_index + 1, lvl,
-                                   color  = i_beLevelColor,
-                                   style  = line.style_dashed,
-                                   width  = 2,
-                                   extend = extend.right)
-            lbl_beShort := label.new(bar_index, lvl, "BE ▼",
-                      style     = label.style_label_left,
-                      color     = color.new(i_beLevelColor, 30),
-                      textcolor = color.white,
-                      size      = size.tiny)
+// f_createBELevel: creates new BE line+label WITHOUT modifying globals (Pine v6 safe)
+// Returns [newLine, newLabel] — caller assigns to global vars
+f_createBELevel(float lvl, string txt) =>
+    newLn  = line.new(bar_index, lvl, bar_index + 1, lvl, color = i_beLevelColor, style = line.style_dashed, width = 2, extend = extend.right)
+    newLbl = label.new(bar_index, lvl, txt, style = label.style_label_left, color = color.new(i_beLevelColor, 30), textcolor = color.white, size = size.tiny)
+    [newLn, newLbl]
 
 // ── SL/TP Trade Management ───────────────────────────────────
 var line ln_sl  = na
@@ -673,29 +647,16 @@ f_getTP(int dir) =>
             tp2 := prevDayLow
     [tp1, tp2]
 
-// Draw SL/TP/Entry lines
-f_drawSLTP(int dir) =>
-    if i_showSLTP
-        // Clean previous lines
-        if not na(ln_sl)
-            line.delete(ln_sl)
-        if not na(ln_tp1)
-            line.delete(ln_tp1)
-        if not na(ln_tp2)
-            line.delete(ln_tp2)
-        if not na(ln_entry)
-            line.delete(ln_entry)
-        // Entry line
-        ln_entry := line.new(bar_index, close, bar_index + 20, close, color = color.white, style = line.style_solid, width = 1)
-        // SL line
-        float sl = f_getSL(dir)
-        ln_sl := line.new(bar_index, sl, bar_index + 20, sl, color = color.red, style = line.style_dashed, width = 1)
-        // TP lines
-        [tp1, tp2] = f_getTP(dir)
-        if not na(tp1)
-            ln_tp1 := line.new(bar_index, tp1, bar_index + 20, tp1, color = color.green, style = line.style_dashed, width = 1)
-        if not na(tp2)
-            ln_tp2 := line.new(bar_index, tp2, bar_index + 20, tp2, color = color.green, style = line.style_dotted, width = 1)
+// f_createSLTPLines: creates new SL/TP/Entry lines WITHOUT modifying globals (Pine v6 safe)
+// Returns [entryLine, slLine, tp1Line, tp2Line] — caller assigns to global vars
+f_createSLTPLines(int dir) =>
+    line _entry = line.new(bar_index, close, bar_index + 20, close, color = color.white, style = line.style_solid, width = 1)
+    float sl = f_getSL(dir)
+    line _sl = line.new(bar_index, sl, bar_index + 20, sl, color = color.red, style = line.style_dashed, width = 1)
+    [tp1, tp2] = f_getTP(dir)
+    line _tp1 = not na(tp1) ? line.new(bar_index, tp1, bar_index + 20, tp1, color = color.green, style = line.style_dashed, width = 1) : na
+    line _tp2 = not na(tp2) ? line.new(bar_index, tp2, bar_index + 20, tp2, color = color.green, style = line.style_dotted, width = 1) : na
+    [_entry, _sl, _tp1, _tp2]
 
 // ============================================================================
 // SECTION 10: RECENT EVENT LOOKBACK
@@ -724,91 +685,19 @@ recentVShape(int dir, int lookback) =>
 // ============================================================================
 // SECTION 11: SESSION LEVEL TRACKING
 // ============================================================================
-
-f_updateSessionLevels() =>
-    inSess = f_inRegularSession()
-    isNew  = inSess and not inSess[1]
-    if isNew
-        prevDayHigh := sessionHigh
-        prevDayLow  := sessionLow
-        sessionHigh := high
-        sessionLow  := low
-        sessionOpen := open
-    if inSess
-        if high > sessionHigh or na(sessionHigh)
-            sessionHigh := high
-        if low < sessionLow or na(sessionLow)
-            sessionLow := low
-    isNew
-
-f_drawSessionLines() =>
-    if i_showPDHL and not na(prevDayHigh)
-        if not na(ln_PDH)
-            line.set_x2(ln_PDH, bar_index)
-        else
-            ln_PDH := line.new(bar_index - 1, prevDayHigh, bar_index, prevDayHigh, color = i_pdhColor, style = line.style_dashed, width = 2)
-    if i_showPDHL and not na(prevDayLow)
-        if not na(ln_PDL)
-            line.set_x2(ln_PDL, bar_index)
-        else
-            ln_PDL := line.new(bar_index - 1, prevDayLow, bar_index, prevDayLow, color = i_pdlColor, style = line.style_dashed, width = 2)
+// NOTE: f_updateSessionLevels, f_drawSessionLines, f_updatePreMarketLevels
+// are inlined into main execution (Pine v6 cannot modify global vars in functions)
 
 f_drawSessionOpen() =>
     if i_showSession and not na(sessionOpen)
         line.new(bar_index - 1, sessionOpen, bar_index, sessionOpen, color = color.gray, style = line.style_dotted, width = 1)
 
 // ============================================================================
-// SECTION 11B: PRE-MARKET H/L TRACKING (FIX K)
+// SECTION 11B: PRE-MARKET H/L TRACKING
 // ============================================================================
 
-// Pre-market session: 04:00–09:30 ET (exclusive of regular open)
 f_inPreMarket() =>
     f_inSession(4, 0, 9, 30)
-
-f_updatePreMarketLevels() =>
-    bool inPM      = f_inPreMarket()
-    bool inRegular = f_inRegularSession()
-
-    // Detect a new calendar day — reset all pre-market state
-    bool newDay = dayofweek != dayofweek[1]
-    if newDay
-        preMarketHigh := na
-        preMarketLow  := na
-        pmFrozen      := false
-        if not na(ln_PMH)
-            line.delete(ln_PMH)
-            ln_PMH := na
-        if not na(ln_PML)
-            line.delete(ln_PML)
-            ln_PML := na
-
-    // During pre-market window: track highest high and lowest low
-    if inPM and not pmFrozen
-        if na(preMarketHigh) or high > preMarketHigh
-            preMarketHigh := high
-        if na(preMarketLow) or low < preMarketLow
-            preMarketLow := low
-
-    // On the first regular-session bar (9:30 open): freeze and draw lines
-    bool justOpened = inRegular and not inRegular[1]
-    if justOpened and not pmFrozen and not na(preMarketHigh)
-        pmFrozen := true
-        if i_showPMHL
-            if not na(ln_PMH)
-                line.delete(ln_PMH)
-            if not na(ln_PML)
-                line.delete(ln_PML)
-            ln_PMH := line.new(bar_index, preMarketHigh, bar_index + 1, preMarketHigh,
-                               color = i_pmhColor, style = line.style_dashed, width = 2)
-            ln_PML := line.new(bar_index, preMarketLow, bar_index + 1, preMarketLow,
-                               color = i_pmlColor, style = line.style_dashed, width = 2)
-
-    // Extend the frozen lines rightward throughout the regular session
-    if pmFrozen and inRegular and i_showPMHL
-        if not na(ln_PMH)
-            line.set_x2(ln_PMH, bar_index)
-        if not na(ln_PML)
-            line.set_x2(ln_PML, bar_index)
 
 // ============================================================================
 // SECTION 12: HTF DATA VIA request.security()
@@ -858,14 +747,61 @@ bool ltf2BearFVG = not na(ltf2BearFVG_raw) ? ltf2BearFVG_raw : false
 // --- Reset per-bar signal count ---
 totalSignals := 0
 
-// --- Session Tracking ---
-bool newSession = f_updateSessionLevels()
-f_updatePreMarketLevels()
-// f_detectEqLevels() detects equal level pairs (matched pivots → dashed lines)
+// --- Session Tracking (inlined — Pine v6 cannot modify global vars in functions) ---
+bool _inSess = f_inRegularSession()
+bool newSession = _inSess and not _inSess[1]
+if newSession
+    prevDayHigh := sessionHigh
+    prevDayLow  := sessionLow
+    sessionHigh := high
+    sessionLow  := low
+    sessionOpen := open
+if _inSess
+    if high > sessionHigh or na(sessionHigh)
+        sessionHigh := high
+    if low < sessionLow or na(sessionLow)
+        sessionLow := low
+
+// --- Pre-Market H/L Tracking (inlined) ---
+bool _inPM      = f_inPreMarket()
+bool _inRegular = f_inRegularSession()
+bool _newDay    = dayofweek != dayofweek[1]
+if _newDay
+    preMarketHigh := na
+    preMarketLow  := na
+    pmFrozen      := false
+    if not na(ln_PMH)
+        line.delete(ln_PMH)
+        ln_PMH := na
+    if not na(ln_PML)
+        line.delete(ln_PML)
+        ln_PML := na
+if _inPM and not pmFrozen
+    if na(preMarketHigh) or high > preMarketHigh
+        preMarketHigh := high
+    if na(preMarketLow) or low < preMarketLow
+        preMarketLow := low
+bool _justOpened = _inRegular and not _inRegular[1]
+if _justOpened and not pmFrozen and not na(preMarketHigh)
+    pmFrozen := true
+    if i_showPMHL
+        if not na(ln_PMH)
+            line.delete(ln_PMH)
+        if not na(ln_PML)
+            line.delete(ln_PML)
+        ln_PMH := line.new(bar_index, preMarketHigh, bar_index + 1, preMarketHigh, color = i_pmhColor, style = line.style_dashed, width = 2)
+        ln_PML := line.new(bar_index, preMarketLow, bar_index + 1, preMarketLow, color = i_pmlColor, style = line.style_dashed, width = 2)
+if pmFrozen and _inRegular and i_showPMHL
+    if not na(ln_PMH)
+        line.set_x2(ln_PMH, bar_index)
+    if not na(ln_PML)
+        line.set_x2(ln_PML, bar_index)
+
+// --- Equal Level Detection ---
 f_detectEqLevels()
-// f_checkEqLevelSweeps() marks equal levels as swept using ICT definition:
-// wick through level + close back (NOT simple close-through)
 f_checkEqLevelSweeps()
+
+// --- Session Lines (inlined) ---
 if newSession and i_showSession
     if not na(ln_PDH)
         line.delete(ln_PDH)
@@ -873,8 +809,16 @@ if newSession and i_showSession
     if not na(ln_PDL)
         line.delete(ln_PDL)
         ln_PDL := na
-
-f_drawSessionLines()
+if i_showPDHL and not na(prevDayHigh)
+    if not na(ln_PDH)
+        line.set_x2(ln_PDH, bar_index)
+    else
+        ln_PDH := line.new(bar_index - 1, prevDayHigh, bar_index, prevDayHigh, color = i_pdhColor, style = line.style_dashed, width = 2)
+if i_showPDHL and not na(prevDayLow)
+    if not na(ln_PDL)
+        line.set_x2(ln_PDL, bar_index)
+    else
+        ln_PDL := line.new(bar_index - 1, prevDayLow, bar_index, prevDayLow, color = i_pdlColor, style = line.style_dashed, width = 2)
 if newSession
     f_drawSessionOpen()
 
@@ -1073,10 +1017,31 @@ if bullReversal and totalSignals < i_maxSignals
     signalArr.push(sig)
     bullSigCount += 1
     totalSignals += 1
-    // Draw break-even level + SL/TP
+    // Draw break-even level + SL/TP (inline — Pine v6 global var safe)
     if i_showBELevel
-        f_drawBELevel(1, f_getInternalStructure(1))
-    f_drawSLTP(1)
+        float _beLvl1 = f_getInternalStructure(1)
+        if not na(_beLvl1)
+            if not na(ln_beLong)
+                line.delete(ln_beLong)
+            if not na(lbl_beLong)
+                label.delete(lbl_beLong)
+            [_newLnBL, _newLblBL] = f_createBELevel(_beLvl1, "BE ▲")
+            ln_beLong  := _newLnBL
+            lbl_beLong := _newLblBL
+    if i_showSLTP
+        if not na(ln_sl)
+            line.delete(ln_sl)
+        if not na(ln_tp1)
+            line.delete(ln_tp1)
+        if not na(ln_tp2)
+            line.delete(ln_tp2)
+        if not na(ln_entry)
+            line.delete(ln_entry)
+        [_e1, _s1, _t11, _t21] = f_createSLTPLines(1)
+        ln_entry := _e1
+        ln_sl    := _s1
+        ln_tp1   := _t11
+        ln_tp2   := _t21
 
 if bearReversal and totalSignals < i_maxSignals
     macroTag = inMacro ? " [" + f_currentMacroLabel() + "]" : ""
@@ -1084,10 +1049,31 @@ if bearReversal and totalSignals < i_maxSignals
     signalArr.push(sig)
     bearSigCount += 1
     totalSignals += 1
-    // Draw break-even level + SL/TP
+    // Draw break-even level + SL/TP (inline)
     if i_showBELevel
-        f_drawBELevel(-1, f_getInternalStructure(-1))
-    f_drawSLTP(-1)
+        float _beLvl2 = f_getInternalStructure(-1)
+        if not na(_beLvl2)
+            if not na(ln_beShort)
+                line.delete(ln_beShort)
+            if not na(lbl_beShort)
+                label.delete(lbl_beShort)
+            [_newLnBS, _newLblBS] = f_createBELevel(_beLvl2, "BE ▼")
+            ln_beShort  := _newLnBS
+            lbl_beShort := _newLblBS
+    if i_showSLTP
+        if not na(ln_sl)
+            line.delete(ln_sl)
+        if not na(ln_tp1)
+            line.delete(ln_tp1)
+        if not na(ln_tp2)
+            line.delete(ln_tp2)
+        if not na(ln_entry)
+            line.delete(ln_entry)
+        [_e2, _s2, _t12, _t22] = f_createSLTPLines(-1)
+        ln_entry := _e2
+        ln_sl    := _s2
+        ln_tp1   := _t12
+        ln_tp2   := _t22
 
 // --- Continuation Signal ---
 // FIX L: fires when EITHER 5m (ltfBullFVG) OR 15m (ltf2BullFVG) FVG is present
@@ -1106,18 +1092,32 @@ if bullContinuation
     signalArr.push(sig)
     bullSigCount += 1
     totalSignals += 1
-    // Draw break-even level for continuation long
     if i_showBELevel
-        f_drawBELevel(1, f_getInternalStructure(1))
+        float _beLvlC1 = f_getInternalStructure(1)
+        if not na(_beLvlC1)
+            if not na(ln_beLong)
+                line.delete(ln_beLong)
+            if not na(lbl_beLong)
+                label.delete(lbl_beLong)
+            [_cLn1, _cLbl1] = f_createBELevel(_beLvlC1, "BE ▲")
+            ln_beLong  := _cLn1
+            lbl_beLong := _cLbl1
 
 if bearContinuation
     sig = Signal.new(bar_index, -1, "continuation", label.new(bar_index, high, "CONT ▼", style = label.style_label_down, color = color.orange, textcolor = color.black, size = size.small))
     signalArr.push(sig)
     bearSigCount += 1
     totalSignals += 1
-    // Draw break-even level for continuation short
     if i_showBELevel
-        f_drawBELevel(-1, f_getInternalStructure(-1))
+        float _beLvlC2 = f_getInternalStructure(-1)
+        if not na(_beLvlC2)
+            if not na(ln_beShort)
+                line.delete(ln_beShort)
+            if not na(lbl_beShort)
+                label.delete(lbl_beShort)
+            [_cLn2, _cLbl2] = f_createBELevel(_beLvlC2, "BE ▼")
+            ln_beShort  := _cLn2
+            lbl_beShort := _cLbl2
 
 capSignalArray(signalArr, 200)
 
