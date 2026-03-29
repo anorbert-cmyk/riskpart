@@ -500,13 +500,19 @@ f_internalStructureOK(int dir) =>
 // ── Equal H/L signal filter ──────────────────────────────────
 // "Do not enter long positions with an equal low below you"
 // "Do not enter short positions with an equal high above you"
+// Only block on CONFIRMED equal levels (those with a drawn line = matched pair),
+// not on every single pivot. Also require the level to be within 2% of price
+// (proximity filter) to avoid blocking on distant old levels.
 f_noBlockingEqLevel(int dir) =>
     bool safe = true
     if eqLevels.size() > 0
         for i = 0 to eqLevels.size() - 1
             eq = eqLevels.get(i)
-            if eq.swept
-                continue
+            if eq.swept or na(eq.ln)
+                continue  // Skip swept levels AND unmatched single pivots (no line = not equal)
+            float dist = math.abs(eq.price - close) / close * 100.0
+            if dist > 2.0
+                continue  // Skip levels more than 2% away (too distant to be relevant)
             // For longs: block if unswept equal LOW exists below price
             if dir == 1 and eq.dir == -1 and eq.price < close
                 safe := false
@@ -909,8 +915,10 @@ if isBearFVG and sessionOK
 capFVGArray(fvgArr, i_fvgMax)
 
 // --- HTF FVG Detection (deduplicated: only on new HTF bar) ---
+// NOTE: sessionOK intentionally NOT checked here — HTF FVGs from London/Asia
+// must be captured so NY session can use them for delivery/opposing checks
 bool htfTimeChanged = ta.change(time(i_htfTF)) != 0
-if i_showHTF and sessionOK and htfTimeChanged
+if i_showHTF and htfTimeChanged
     if htfBullFVG and not na(htfL0) and not na(htfH2)
         htfGapTop    = htfL0
         htfGapBottom = htfH2
@@ -927,7 +935,25 @@ if i_showHTF and sessionOK and htfTimeChanged
             htfFVGArr.push(htfGap)
     capFVGArray(htfFVGArr, i_fvgMax)
 
-// --- Check for IFVGs ---
+// --- V-Shape Detection (MUST run BEFORE checkIFVG which deactivates FVGs) ---
+[isBullV, isBearV, vMom] = detectVShape()
+[htfBullV, htfBearV]     = detectHTFVShape()
+
+if isBullV and sessionOK
+    vs = VShape.new(bar_index, 1, vMom)
+    if i_showVShape
+        vs.lbl := label.new(bar_index, low, "V", style = label.style_label_up, color = color.teal, textcolor = color.white, size = size.tiny)
+    vshapeArr.push(vs)
+
+if isBearV and sessionOK
+    vs = VShape.new(bar_index, -1, vMom)
+    if i_showVShape
+        vs.lbl := label.new(bar_index, high, "V", style = label.style_label_down, color = color.maroon, textcolor = color.white, size = size.tiny)
+    vshapeArr.push(vs)
+
+capVShapeArray(vshapeArr, i_fvgMax)
+
+// --- Check for IFVGs (runs AFTER V-shape so FVGs are still active for V-shape) ---
 checkIFVG()
 capFVGArray(ifvgArr, i_fvgMax)
 
@@ -959,12 +985,22 @@ if htfFVGArr.size() > 0
                 gap.active := false
                 box.set_bgcolor(gap.bx, color.new(color.gray, 92))
 
-// --- IFVG Box Extension ---
+// --- IFVG Mitigation + Box Extension ---
 if ifvgArr.size() > 0
     for i = 0 to ifvgArr.size() - 1
         ifvg = ifvgArr.get(i)
-        if ifvg.active and not na(ifvg.bx)
-            box.set_right(ifvg.bx, bar_index)
+        if ifvg.active
+            if not na(ifvg.bx)
+                box.set_right(ifvg.bx, bar_index)
+            // Mitigate IFVG when price closes through it (same logic as FVG mitigation)
+            if ifvg.dir == 1 and close < ifvg.bottom
+                ifvg.active := false
+                if not na(ifvg.bx)
+                    box.set_bgcolor(ifvg.bx, color.new(color.gray, 92))
+            else if ifvg.dir == -1 and close > ifvg.top
+                ifvg.active := false
+                if not na(ifvg.bx)
+                    box.set_bgcolor(ifvg.bx, color.new(color.gray, 92))
 
 // --- Liquidity Sweep Detection ---
 float prevSwingHigh = ta.highest(high, 20)[1]
@@ -985,23 +1021,7 @@ if isBearSweep and sessionOK
 
 capSweepArray(sweepArr, i_fvgMax)
 
-// --- V-Shape Detection ---
-[isBullV, isBearV, vMom] = detectVShape()
-[htfBullV, htfBearV]     = detectHTFVShape()
-
-if isBullV and sessionOK
-    vs = VShape.new(bar_index, 1, vMom)
-    if i_showVShape
-        vs.lbl := label.new(bar_index, low, "V", style = label.style_label_up, color = color.teal, textcolor = color.white, size = size.tiny)
-    vshapeArr.push(vs)
-
-if isBearV and sessionOK
-    vs = VShape.new(bar_index, -1, vMom)
-    if i_showVShape
-        vs.lbl := label.new(bar_index, high, "V", style = label.style_label_down, color = color.maroon, textcolor = color.white, size = size.tiny)
-    vshapeArr.push(vs)
-
-capVShapeArray(vshapeArr, i_fvgMax)
+// (V-Shape detection moved above checkIFVG to fix critical ordering bug)
 
 // --- Macro Background (global scope — bgcolor cannot be inside if blocks in v6) ---
 bgcolor(i_showMacros and inMacro ? i_macroColor : na)
