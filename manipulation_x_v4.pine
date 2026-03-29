@@ -40,6 +40,19 @@ i_sessFilter        = input.session("0930-1600", "Session Filter", group = "Sess
 i_useSess           = input.bool(true, "Use Session Filter", group = "Session")
 i_showSession       = input.bool(true, "Show Session Levels", group = "Session")
 
+// --- Session Backgrounds ---
+i_showSessBg        = input.bool(true, "Show Session Backgrounds", group = "Session Backgrounds")
+i_asiaSessStart     = input.string("1900", "Asia/Tokyo Start (HHMM ET)", group = "Session Backgrounds")
+i_asiaSessEnd       = input.string("0400", "Asia/Tokyo End (HHMM ET)", group = "Session Backgrounds")
+i_asiaSessColor     = input.color(color.new(color.blue, 92), "Asia/Tokyo Color", group = "Session Backgrounds")
+i_londonSessStart   = input.string("0300", "London Start (HHMM ET)", group = "Session Backgrounds")
+i_londonSessEnd     = input.string("1200", "London End (HHMM ET)", group = "Session Backgrounds")
+i_londonSessColor   = input.color(color.new(color.blue, 90), "London Color", group = "Session Backgrounds")
+i_nySessStart       = input.string("0930", "New York Start (HHMM ET)", group = "Session Backgrounds")
+i_nySessEnd         = input.string("1600", "New York End (HHMM ET)", group = "Session Backgrounds")
+i_nySessColor       = input.color(color.new(color.blue, 88), "New York Color", group = "Session Backgrounds")
+i_overlapColor      = input.color(color.new(color.purple, 90), "London-NY Overlap Color", group = "Session Backgrounds")
+
 // --- Macro Settings ---
 i_showMacros        = input.bool(true, "Show Macro Windows", group = "Macros")
 i_macro1Start       = input.string("0933", "Macro 1 Start", group = "Macros")
@@ -120,7 +133,7 @@ f_inSession(int startH, int startM, int endH, int endM) =>
     cur = h * 60 + m
     s   = startH * 60 + startM
     e   = endH * 60 + endM
-    cur >= s and cur < e
+    s <= e ? (cur >= s and cur < e) : (cur >= s or cur < e)
 
 // --- Zero-param wrapper for regular session (9:30-16:00) ---
 f_inRegularSession() =>
@@ -144,6 +157,12 @@ f_isInMacro() =>
     m2 = f_isInTimeRange(i_macro2Start, i_macro2End)
     m3 = f_isInTimeRange(i_macro3Start, i_macro3End)
     m1 or m2 or m3
+
+// --- Session background detection ---
+f_inAsiaSess()    => f_isInTimeRange(i_asiaSessStart, i_asiaSessEnd)
+f_inLondonSess()  => f_isInTimeRange(i_londonSessStart, i_londonSessEnd)
+f_inNYSess()      => f_isInTimeRange(i_nySessStart, i_nySessEnd)
+f_inOverlapSess() => f_inLondonSess() and f_inNYSess()
 
 f_currentMacroLabel() =>
     m1 = f_isInTimeRange(i_macro1Start, i_macro1End)
@@ -512,6 +531,17 @@ capVShapeArray(vshapeArr, i_fvgMax)
 // --- Macro Background ---
 if i_showMacros and inMacro
     bgcolor(i_macroColor)
+
+// --- Session Backgrounds ---
+if i_showSessBg
+    if f_inOverlapSess()
+        bgcolor(i_overlapColor, title = "London-NY Overlap")
+    else if f_inNYSess()
+        bgcolor(i_nySessColor, title = "New York Session")
+    else if f_inLondonSess()
+        bgcolor(i_londonSessColor, title = "London Session")
+    else if f_inAsiaSess()
+        bgcolor(i_asiaSessColor, title = "Asia/Tokyo Session")
 
 // ============================================================================
 // SECTION 14: SIGNAL GENERATION
