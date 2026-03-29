@@ -27,6 +27,7 @@ i_ifvgBearColor     = input.color(color.new(color.maroon, 75), "Bear IFVG Color"
 i_showHTF           = input.bool(true, "Show HTF FVGs", group = "HTF")
 i_htfTF             = input.timeframe("60", "HTF Timeframe", group = "HTF")
 i_ltfTF             = input.timeframe("5", "LTF Timeframe", group = "HTF")
+i_ltfTF2            = input.timeframe("15", "LTF 2 Timeframe", group = "HTF")
 
 // --- Liquidity Settings ---
 i_showSweeps        = input.bool(true, "Show Liquidity Sweeps", group = "Liquidity")
@@ -34,6 +35,13 @@ i_sweepWickPct      = input.float(0.3, "Sweep Wick % Threshold", minval = 0.1, m
 i_showPDHL          = input.bool(true, "Show PDH/PDL", group = "Liquidity")
 i_pdhColor          = input.color(color.new(color.blue, 30), "PDH Color", group = "Liquidity")
 i_pdlColor          = input.color(color.new(color.purple, 30), "PDL Color", group = "Liquidity")
+i_showPMHL          = input.bool(true, "Show Pre-Market H/L", group = "Liquidity")
+i_pmhColor          = input.color(color.new(color.aqua, 40), "PMH Color", group = "Liquidity")
+i_pmlColor          = input.color(color.new(color.aqua, 40), "PML Color", group = "Liquidity")
+i_showEqHL          = input.bool(true, "Show Equal H/L", group = "Liquidity")
+i_eqTolerance       = input.float(0.03, "Equal H/L Tolerance (%)", minval = 0.01, maxval = 0.5, step = 0.01, group = "Liquidity")
+i_pivotLen          = input.int(5, "Pivot Lookback", minval = 2, maxval = 20, group = "Liquidity")
+i_eqColor           = input.color(color.new(color.yellow, 30), "Equal Level Color", group = "Liquidity")
 
 // --- Session Settings ---
 i_sessFilter        = input.session("0930-1600", "Session Filter", group = "Session")
@@ -68,6 +76,9 @@ i_showSignals       = input.bool(true, "Show Signals", group = "Signals")
 i_showVShape        = input.bool(true, "Show V-Shape Patterns", group = "Signals")
 i_vshapeLen         = input.int(5, "V-Shape Lookback Bars", minval = 2, maxval = 20, group = "Signals")
 i_vshapeMom         = input.float(1.5, "V-Shape Momentum Factor", minval = 1.0, maxval = 5.0, step = 0.1, group = "Signals")
+i_filterIntStruct   = input.bool(true,  "Filter: Block if Internal Structure Taken", group = "Signals")
+i_showBELevel       = input.bool(true,  "Show Break-Even Level", group = "Signals")
+i_beLevelColor      = input.color(color.new(color.orange, 0), "Break-Even Level Color", group = "Signals")
 
 // ============================================================================
 // SECTION 2: USER-DEFINED TYPES
@@ -98,6 +109,14 @@ type Signal
     string  sigType         // "reversal" or "continuation"
     label   lbl
 
+// --- Equal High / Low level ---
+type EqLevel
+    float   price           // price of the equal level
+    int     barIdx          // bar when the equal level was confirmed
+    int     dir             // 1 = equal high, -1 = equal low
+    bool    swept           // true once price has traded through and closed back
+    line    ln              // the horizontal line drawn on chart
+
 // ============================================================================
 // SECTION 3: GLOBAL VARIABLES
 // ============================================================================
@@ -108,6 +127,7 @@ var array<FVG>      htfFVGArr   = array.new<FVG>()
 var array<Sweep>    sweepArr    = array.new<Sweep>()
 var array<VShape>   vshapeArr   = array.new<VShape>()
 var array<Signal>   signalArr   = array.new<Signal>()
+var array<EqLevel>  eqLevels    = array.new<EqLevel>()
 
 var int   bullSigCount  = 0
 var int   bearSigCount  = 0
@@ -121,6 +141,13 @@ var float prevDayLow    = na
 
 var line  ln_PDH        = na
 var line  ln_PDL        = na
+
+// --- Pre-Market H/L tracking (4:00–9:30 ET) ---
+var float preMarketHigh = na
+var float preMarketLow  = na
+var line  ln_PMH        = na
+var line  ln_PML        = na
+var bool  pmFrozen      = false   // true once the 9:30 open has locked in the values
 
 // ============================================================================
 // SECTION 4: UTILITY FUNCTIONS
@@ -249,21 +276,30 @@ detectSweeps(float prevHigh, float prevLow) =>
 // ============================================================================
 
 detectVShape() =>
-    bool bullV  = false
-    bool bearV  = false
-    float mom   = 0.0
-    if ifvgArr.size() > 0
-        lastIFVG = ifvgArr.get(ifvgArr.size() - 1)
-        int barsSince = bar_index - lastIFVG.startBar
-        if barsSince <= i_vshapeLen and barsSince > 0
-            float avgRange = ta.atr(14)
-            float safeAvg  = math.max(avgRange, syminfo.mintick)
-            float currMove = math.abs(close - open)
-            mom := safeDivide(currMove, safeAvg)
-            if lastIFVG.dir == 1 and mom >= i_vshapeMom
+    bool bullV = false
+    bool bearV = false
+    float mom  = 0.0
+    float avgRange = ta.atr(14)
+    float safeAvg  = math.max(avgRange, syminfo.mintick)
+    float currMove = math.abs(close - open)
+    mom := safeDivide(currMove, safeAvg)
+
+    if fvgArr.size() > 0 and mom >= i_vshapeMom
+        for i = fvgArr.size() - 1 to 0
+            fvg = fvgArr.get(i)
+            if not fvg.active or fvg.inversed
+                continue
+            int barsAgo = bar_index - fvg.startBar
+            if barsAgo > i_vshapeLen or barsAgo < 1
+                continue
+            // Bullish V-shape: bearish FVG inversed upward
+            if fvg.dir == -1 and close > fvg.top and close > open
                 bullV := true
-            else if lastIFVG.dir == -1 and mom >= i_vshapeMom
+                break
+            // Bearish V-shape: bullish FVG inversed downward
+            if fvg.dir == 1 and close < fvg.bottom and close < open
                 bearV := true
+                break
     [bullV, bearV, mom]
 
 // --- HTF V-Shape: checks against HTF FVG array ---
@@ -301,6 +337,27 @@ isInOpposingFVG(int signalDir) =>
                         result := true
                         break
     result
+
+// ============================================================================
+// SECTION 9B: SANDWICHED-BETWEEN-FVGs FILTER (FIX J)
+// ============================================================================
+
+// Returns true when price is caught between a bullish HTF FVG below and a
+// bearish HTF FVG above — i.e. no clean draw on either side.
+f_isSandwiched() =>
+    bool bullBelow = false
+    bool bearAbove = false
+    if htfFVGArr.size() > 0
+        for i = 0 to htfFVGArr.size() - 1
+            gap = htfFVGArr.get(i)
+            if gap.active
+                // Bullish HTF FVG sitting below current price
+                if gap.dir == 1 and gap.top < close
+                    bullBelow := true
+                // Bearish HTF FVG sitting above current price
+                if gap.dir == -1 and gap.bottom > close
+                    bearAbove := true
+    bullBelow and bearAbove
 
 // ============================================================================
 // SECTION 10: RECENT EVENT LOOKBACK
@@ -363,6 +420,59 @@ f_drawSessionOpen() =>
         line.new(bar_index - 1, sessionOpen, bar_index, sessionOpen, color = color.gray, style = line.style_dotted, width = 1)
 
 // ============================================================================
+// SECTION 11B: PRE-MARKET H/L TRACKING (FIX K)
+// ============================================================================
+
+// Pre-market session: 04:00–09:30 ET (exclusive of regular open)
+f_inPreMarket() =>
+    f_inSession(4, 0, 9, 30)
+
+f_updatePreMarketLevels() =>
+    bool inPM      = f_inPreMarket()
+    bool inRegular = f_inRegularSession()
+
+    // Detect a new calendar day — reset all pre-market state
+    bool newDay = dayofweek != dayofweek[1]
+    if newDay
+        preMarketHigh := na
+        preMarketLow  := na
+        pmFrozen      := false
+        if not na(ln_PMH)
+            line.delete(ln_PMH)
+            ln_PMH := na
+        if not na(ln_PML)
+            line.delete(ln_PML)
+            ln_PML := na
+
+    // During pre-market window: track highest high and lowest low
+    if inPM and not pmFrozen
+        if na(preMarketHigh) or high > preMarketHigh
+            preMarketHigh := high
+        if na(preMarketLow) or low < preMarketLow
+            preMarketLow := low
+
+    // On the first regular-session bar (9:30 open): freeze and draw lines
+    bool justOpened = inRegular and not inRegular[1]
+    if justOpened and not pmFrozen and not na(preMarketHigh)
+        pmFrozen := true
+        if i_showPMHL
+            if not na(ln_PMH)
+                line.delete(ln_PMH)
+            if not na(ln_PML)
+                line.delete(ln_PML)
+            ln_PMH := line.new(bar_index, preMarketHigh, bar_index + 1, preMarketHigh,
+                               color = i_pmhColor, style = line.style_dashed, width = 2)
+            ln_PML := line.new(bar_index, preMarketLow, bar_index + 1, preMarketLow,
+                               color = i_pmlColor, style = line.style_dashed, width = 2)
+
+    // Extend the frozen lines rightward throughout the regular session
+    if pmFrozen and inRegular and i_showPMHL
+        if not na(ln_PMH)
+            line.set_x2(ln_PMH, bar_index)
+        if not na(ln_PML)
+            line.set_x2(ln_PML, bar_index)
+
+// ============================================================================
 // SECTION 12: HTF DATA VIA request.security()
 // ============================================================================
 
@@ -373,18 +483,34 @@ htfBearFVG_raw = request.security(syminfo.tickerid, i_htfTF, high < low[2])
 bool htfBullFVG = not na(htfBullFVG_raw) ? htfBullFVG_raw : false
 bool htfBearFVG = not na(htfBearFVG_raw) ? htfBearFVG_raw : false
 
-// HTF delivery direction
-bool htfBullDelivery = not na(htfClose) and not na(htfOpen) ? htfClose > htfOpen : false
-bool htfBearDelivery = not na(htfClose) and not na(htfOpen) ? htfClose < htfOpen : false
+// Check if price is inside an HTF FVG of the given direction
+// dir = 1: check for bullish HTF FVG (confirms long setup)
+// dir = -1: check for bearish HTF FVG (confirms short setup)
+f_isInsideHTFFVG(int dir) =>
+    bool result = false
+    if htfFVGArr.size() > 0
+        for i = htfFVGArr.size() - 1 to 0
+            gap = htfFVGArr.get(i)
+            if gap.active and gap.dir == dir
+                if close >= gap.bottom and close <= gap.top
+                    result := true
+                    break
+    result
 
 // HTF OHLC for FVG gap values
 [htfH2, htfL2, htfH0, htfL0] = request.security(syminfo.tickerid, i_htfTF, [high[2], low[2], high, low])
 
-// LTF FVG reaction
+// LTF FVG reaction (5m)
 ltfBullFVG_raw = request.security(syminfo.tickerid, i_ltfTF, low > high[2])
 ltfBearFVG_raw = request.security(syminfo.tickerid, i_ltfTF, high < low[2])
 bool ltfBullFVG = not na(ltfBullFVG_raw) ? ltfBullFVG_raw : false
 bool ltfBearFVG = not na(ltfBearFVG_raw) ? ltfBearFVG_raw : false
+
+// LTF2 FVG reaction (15m) — FIX L
+ltf2BullFVG_raw = request.security(syminfo.tickerid, i_ltfTF2, low > high[2])
+ltf2BearFVG_raw = request.security(syminfo.tickerid, i_ltfTF2, high < low[2])
+bool ltf2BullFVG = not na(ltf2BullFVG_raw) ? ltf2BullFVG_raw : false
+bool ltf2BearFVG = not na(ltf2BearFVG_raw) ? ltf2BearFVG_raw : false
 
 // ============================================================================
 // SECTION 13: MAIN EXECUTION
@@ -395,6 +521,7 @@ totalSignals := 0
 
 // --- Session Tracking ---
 bool newSession = f_updateSessionLevels()
+f_updatePreMarketLevels()
 if newSession and i_showSession
     if not na(ln_PDH)
         line.delete(ln_PDH)
@@ -552,13 +679,17 @@ bool bearReversal     = false
 bool bullContinuation = false
 bool bearContinuation = false
 
-if sessionOK and i_showSignals
+// FIX J: evaluate sandwich filter once per bar — suppresses all signals when
+// price is trapped between a bullish HTF FVG below and a bearish HTF FVG above
+bool sandwiched = f_isSandwiched()
+
+if sessionOK and i_showSignals and not sandwiched
     // --- Reversal Signal ---
     // Bullish reversal: bullish sweep + HTF bullish delivery + bullish V-shape + not in opposing FVG
-    if recentSweep(1, i_vshapeLen) and htfBullDelivery and recentVShape(1, i_vshapeLen) and not isInOpposingFVG(1)
+    if recentSweep(1, i_vshapeLen) and f_isInsideHTFFVG(1) and recentVShape(1, i_vshapeLen) and not isInOpposingFVG(1)
         bullReversal := true
-    // Bearish reversal: bearish sweep + HTF bearish delivery + bearish V-shape
-    if recentSweep(-1, i_vshapeLen) and htfBearDelivery and recentVShape(-1, i_vshapeLen) and not isInOpposingFVG(-1)
+    // Bearish reversal: bearish sweep + HTF bearish FVG zone + bearish V-shape
+    if recentSweep(-1, i_vshapeLen) and f_isInsideHTFFVG(-1) and recentVShape(-1, i_vshapeLen) and not isInOpposingFVG(-1)
         bearReversal := true
 
 if bullReversal and totalSignals < i_maxSignals
@@ -576,14 +707,15 @@ if bearReversal and totalSignals < i_maxSignals
     totalSignals += 1
 
 // --- Continuation Signal ---
-if sessionOK and i_showSignals
+// FIX L: fires when EITHER 5m (ltfBullFVG) OR 15m (ltf2BullFVG) FVG is present
+if sessionOK and i_showSignals and not sandwiched
     float avgRange = ta.atr(14)
     float safeAvg  = math.max(avgRange, syminfo.mintick)
     float momNow   = safeDivide(math.abs(close - open), safeAvg)
     bool  momOK    = momNow >= 1.0
-    if ltfBullFVG and not isInOpposingFVG(1) and momOK and not bullReversal and totalSignals < i_maxSignals
+    if (ltfBullFVG or ltf2BullFVG) and not isInOpposingFVG(1) and momOK and not bullReversal and totalSignals < i_maxSignals
         bullContinuation := true
-    if ltfBearFVG and not isInOpposingFVG(-1) and momOK and not bearReversal and totalSignals < i_maxSignals
+    if (ltfBearFVG or ltf2BearFVG) and not isInOpposingFVG(-1) and momOK and not bearReversal and totalSignals < i_maxSignals
         bearContinuation := true
 
 if bullContinuation
