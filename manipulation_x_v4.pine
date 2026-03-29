@@ -99,11 +99,13 @@ type Sweep
     float   level
     int     barIdx
     int     dir             // 1 = bullish sweep (below), -1 = bearish sweep (above)
+    label   lbl = na
 
 type VShape
     int     barIdx
     int     dir             // 1 = bullish, -1 = bearish
     float   momentum
+    label   lbl = na
 
 type Signal
     int     barIdx
@@ -211,11 +213,15 @@ capFVGArray(array<FVG> arr, int maxSize) =>
 
 capSweepArray(array<Sweep> arr, int maxSize) =>
     while arr.size() > maxSize
-        arr.shift()
+        old = arr.shift()
+        if not na(old.lbl)
+            label.delete(old.lbl)
 
 capVShapeArray(array<VShape> arr, int maxSize) =>
     while arr.size() > maxSize
-        arr.shift()
+        old = arr.shift()
+        if not na(old.lbl)
+            label.delete(old.lbl)
 
 capSignalArray(array<Signal> arr, int maxSize) =>
     while arr.size() > maxSize
@@ -531,7 +537,7 @@ f_detectEqLevels() =>
                     if math.abs(ph - eq.price) / eq.price * 100.0 <= i_eqTolerance
                         matched := true
                         break
-        ln = na(line)
+        line ln = na
         if matched and i_showEqHL
             ln := line.new(pivotBar, ph, pivotBar + 1, ph, color = i_eqColor, style = line.style_dashed, width = 1, extend = extend.right)
         eqLevels.push(EqLevel.new(ph, pivotBar, 1, false, ln))
@@ -545,7 +551,7 @@ f_detectEqLevels() =>
                     if math.abs(pl - eq.price) / eq.price * 100.0 <= i_eqTolerance
                         matched := true
                         break
-        ln = na(line)
+        line ln = na
         if matched and i_showEqHL
             ln := line.new(pivotBar, pl, pivotBar + 1, pl, color = i_eqColor, style = line.style_dashed, width = 1, extend = extend.right)
         eqLevels.push(EqLevel.new(pl, pivotBar, -1, false, ln))
@@ -567,9 +573,11 @@ f_checkEqLevelSweeps() =>
                         line.set_color(eq.ln, color.new(color.gray, 60))
                         line.set_style(eq.ln, line.style_dotted)
 
-// --- Break-even level persistent line objects ---
-var line ln_beLong  = na
-var line ln_beShort = na
+// --- Break-even level persistent line + label objects ---
+var line  ln_beLong   = na
+var line  ln_beShort  = na
+var label lbl_beLong  = na
+var label lbl_beShort = na
 
 // ---------------------------------------------------------------------------
 // f_drawBELevel(dir, lvl)
@@ -582,12 +590,14 @@ f_drawBELevel(int dir, float lvl) =>
         if dir == 1
             if not na(ln_beLong)
                 line.delete(ln_beLong)
+            if not na(lbl_beLong)
+                label.delete(lbl_beLong)
             ln_beLong := line.new(bar_index, lvl, bar_index + 1, lvl,
                                   color  = i_beLevelColor,
                                   style  = line.style_dashed,
                                   width  = 2,
                                   extend = extend.right)
-            label.new(bar_index, lvl, "BE ▲",
+            lbl_beLong := label.new(bar_index, lvl, "BE ▲",
                       style     = label.style_label_left,
                       color     = color.new(i_beLevelColor, 30),
                       textcolor = color.white,
@@ -595,12 +605,14 @@ f_drawBELevel(int dir, float lvl) =>
         else
             if not na(ln_beShort)
                 line.delete(ln_beShort)
+            if not na(lbl_beShort)
+                label.delete(lbl_beShort)
             ln_beShort := line.new(bar_index, lvl, bar_index + 1, lvl,
                                    color  = i_beLevelColor,
                                    style  = line.style_dashed,
                                    width  = 2,
                                    extend = extend.right)
-            label.new(bar_index, lvl, "BE ▼",
+            lbl_beShort := label.new(bar_index, lvl, "BE ▼",
                       style     = label.style_label_left,
                       color     = color.new(i_beLevelColor, 30),
                       textcolor = color.white,
@@ -803,16 +815,10 @@ f_updatePreMarketLevels() =>
 // SECTION 12: HTF DATA VIA request.security()
 // ============================================================================
 
-[htfHigh, htfLow, htfClose, htfOpen] = request.security(syminfo.tickerid, i_htfTF, [high, low, close, open])
-
-htfBullFVG_raw = request.security(syminfo.tickerid, i_htfTF, low > high[2])
-htfBearFVG_raw = request.security(syminfo.tickerid, i_htfTF, high < low[2])
-bool htfBullFVG = not na(htfBullFVG_raw) ? htfBullFVG_raw : false
-bool htfBearFVG = not na(htfBearFVG_raw) ? htfBearFVG_raw : false
-
 // Check if price is inside an HTF FVG of the given direction
 // dir = 1: check for bullish HTF FVG (confirms long setup)
 // dir = -1: check for bearish HTF FVG (confirms short setup)
+// NOTE: Must be defined BEFORE request.security() calls (Pine v6 requirement)
 f_isInsideHTFFVG(int dir) =>
     bool result = false
     if htfFVGArr.size() > 0
@@ -823,6 +829,13 @@ f_isInsideHTFFVG(int dir) =>
                     result := true
                     break
     result
+
+[htfHigh, htfLow, htfClose, htfOpen] = request.security(syminfo.tickerid, i_htfTF, [high, low, close, open])
+
+htfBullFVG_raw = request.security(syminfo.tickerid, i_htfTF, low > high[2])
+htfBearFVG_raw = request.security(syminfo.tickerid, i_htfTF, high < low[2])
+bool htfBullFVG = not na(htfBullFVG_raw) ? htfBullFVG_raw : false
+bool htfBearFVG = not na(htfBearFVG_raw) ? htfBearFVG_raw : false
 
 // HTF OHLC for FVG gap values
 [htfH2, htfL2, htfH0, htfL0] = request.security(syminfo.tickerid, i_htfTF, [high[2], low[2], high, low])
@@ -849,8 +862,9 @@ totalSignals := 0
 // --- Session Tracking ---
 bool newSession = f_updateSessionLevels()
 f_updatePreMarketLevels()
+// NOTE: f_updateEqLevels() called later (line ~872) handles pivot detection + sweep checks
+// f_detectEqLevels() provides additional equal-level matching for dashed lines
 f_detectEqLevels()
-f_checkEqLevelSweeps()
 if newSession and i_showSession
     if not na(ln_PDH)
         line.delete(ln_PDH)
@@ -959,15 +973,15 @@ float prevSwingLow  = ta.lowest(low, 20)[1]
 
 if isBullSweep and sessionOK
     s = Sweep.new(prevSwingLow, bar_index, 1)
-    sweepArr.push(s)
     if i_showSweeps
-        label.new(bar_index, low, "Sweep", style = label.style_label_up, color = color.green, textcolor = color.white, size = size.tiny)
+        s.lbl := label.new(bar_index, low, "Sweep", style = label.style_label_up, color = color.green, textcolor = color.white, size = size.tiny)
+    sweepArr.push(s)
 
 if isBearSweep and sessionOK
     s = Sweep.new(prevSwingHigh, bar_index, -1)
-    sweepArr.push(s)
     if i_showSweeps
-        label.new(bar_index, high, "Sweep", style = label.style_label_down, color = color.red, textcolor = color.white, size = size.tiny)
+        s.lbl := label.new(bar_index, high, "Sweep", style = label.style_label_down, color = color.red, textcolor = color.white, size = size.tiny)
+    sweepArr.push(s)
 
 capSweepArray(sweepArr, i_fvgMax)
 
@@ -977,32 +991,33 @@ capSweepArray(sweepArr, i_fvgMax)
 
 if isBullV and sessionOK
     vs = VShape.new(bar_index, 1, vMom)
-    vshapeArr.push(vs)
     if i_showVShape
-        label.new(bar_index, low, "V", style = label.style_label_up, color = color.teal, textcolor = color.white, size = size.tiny)
+        vs.lbl := label.new(bar_index, low, "V", style = label.style_label_up, color = color.teal, textcolor = color.white, size = size.tiny)
+    vshapeArr.push(vs)
 
 if isBearV and sessionOK
     vs = VShape.new(bar_index, -1, vMom)
-    vshapeArr.push(vs)
     if i_showVShape
-        label.new(bar_index, high, "V", style = label.style_label_down, color = color.maroon, textcolor = color.white, size = size.tiny)
+        vs.lbl := label.new(bar_index, high, "V", style = label.style_label_down, color = color.maroon, textcolor = color.white, size = size.tiny)
+    vshapeArr.push(vs)
 
 capVShapeArray(vshapeArr, i_fvgMax)
 
-// --- Macro Background ---
-if i_showMacros and inMacro
-    bgcolor(i_macroColor)
+// --- Macro Background (global scope — bgcolor cannot be inside if blocks in v6) ---
+bgcolor(i_showMacros and inMacro ? i_macroColor : na)
 
-// --- Session Backgrounds ---
+// --- Session Backgrounds (global scope) ---
+color _sessBgColor = na
 if i_showSessBg
     if f_inOverlapSess()
-        bgcolor(i_overlapColor)
+        _sessBgColor := i_overlapColor
     else if f_inNYSess()
-        bgcolor(i_nySessColor)
+        _sessBgColor := i_nySessColor
     else if f_inLondonSess()
-        bgcolor(i_londonSessColor)
+        _sessBgColor := i_londonSessColor
     else if f_inAsiaSess()
-        bgcolor(i_asiaSessColor)
+        _sessBgColor := i_asiaSessColor
+bgcolor(_sessBgColor)
 
 // ============================================================================
 // SECTION 14: SIGNAL GENERATION
