@@ -44,7 +44,7 @@ i_pivotLen          = input.int(5, "Pivot Lookback", minval = 2, maxval = 20, gr
 i_eqColor           = input.color(color.new(color.yellow, 30), "Equal Level Color", group = "Liquidity")
 
 // --- Session Settings ---
-i_sessFilter        = input.session("0930-1600", "Session Filter", group = "Session")
+i_sessFilter        = input.session("0930-1100", "Session Filter", group = "Session")
 i_useSess           = input.bool(true, "Use Session Filter", group = "Session")
 i_showSession       = input.bool(true, "Show Session Levels", group = "Session")
 
@@ -63,8 +63,8 @@ i_overlapColor      = input.color(color.new(color.purple, 90), "London-NY Overla
 
 // --- Macro Settings ---
 i_showMacros        = input.bool(true, "Show Macro Windows", group = "Macros")
-i_macro1Start       = input.string("0933", "Macro 1 Start", group = "Macros")
-i_macro1End         = input.string("1000", "Macro 1 End", group = "Macros")
+i_macro1Start       = input.string("0950", "Macro 1 Start", group = "Macros")
+i_macro1End         = input.string("1010", "Macro 1 End", group = "Macros")
 i_macro2Start       = input.string("1050", "Macro 2 Start", group = "Macros")
 i_macro2End         = input.string("1110", "Macro 2 End", group = "Macros")
 i_macro3Start       = input.string("1350", "Macro 3 Start", group = "Macros")
@@ -74,7 +74,7 @@ i_macroColor        = input.color(color.new(color.yellow, 90), "Macro BG Color",
 // --- Signal Settings ---
 i_showSignals       = input.bool(true, "Show Signals", group = "Signals")
 i_showVShape        = input.bool(true, "Show V-Shape Patterns", group = "Signals")
-i_vshapeLen         = input.int(5, "V-Shape Lookback Bars", minval = 2, maxval = 20, group = "Signals")
+i_vshapeLen         = input.int(3, "V-Shape Lookback Bars", minval = 1, maxval = 10, group = "Signals")
 i_vshapeMom         = input.float(1.5, "V-Shape Momentum Factor", minval = 1.0, maxval = 5.0, step = 0.1, group = "Signals")
 i_filterIntStruct   = input.bool(true,  "Filter: Block if Internal Structure Taken", group = "Signals")
 i_showBELevel       = input.bool(true,  "Show Break-Even Level", group = "Signals")
@@ -324,9 +324,9 @@ detectHTFVShape() =>
 
 isInOpposingFVG(int signalDir) =>
     bool result = false
-    if fvgArr.size() > 0
-        for i = fvgArr.size() - 1 to 0
-            fvg = fvgArr.get(i)
+    if htfFVGArr.size() > 0
+        for i = htfFVGArr.size() - 1 to 0
+            fvg = htfFVGArr.get(i)
             if fvg.active
                 if signalDir == 1 and fvg.dir == -1
                     if close >= fvg.bottom and close <= fvg.top
@@ -358,6 +358,175 @@ f_isSandwiched() =>
                 if gap.dir == -1 and gap.bottom > close
                     bearAbove := true
     bullBelow and bearAbove
+
+// ============================================================================
+// SECTION 9C: INTERNAL STRUCTURE DETECTION & BREAK-EVEN FILTER
+// ============================================================================
+//
+// ICT concept: "Do not enter a trade if internal liquidity has already been
+// taken."  For a long, the nearest unswept swing HIGH above current close is
+// the break-even (first target).  If the signal candle already closed above
+// that level the trade is invalid — the BE was reached before entry.
+// For a short, the nearest unswept swing LOW below current close applies.
+//
+// Implementation uses two complementary sources of swing levels:
+//   1. ta.pivothigh() / ta.pivotlow() with i_pivotLen — detects confirmed
+//      pivot swing points (confirmed i_pivotLen bars in the past).
+//   2. eqLevels array — equal H/L levels are internal liquidity pools and
+//      are populated here alongside raw pivots so both sources feed the filter.
+//
+// f_getInternalStructure(dir) returns the NEAREST qualifying unswept level:
+//   dir =  1 (long)  → lowest unswept swing HIGH strictly above close
+//   dir = -1 (short) → highest unswept swing LOW strictly below close
+//
+// f_internalStructureOK(dir) returns true when the signal is valid (structure
+// intact) and false when the signal must be blocked (structure already taken).
+//
+// var-scoped lines track the break-even level so it can be drawn on chart.
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// f_updateEqLevels()
+// Must be called once per bar (inside main execution) before signal checks.
+// Detects confirmed swing highs/lows via ta.pivothigh/pivotlow, inserts them
+// into eqLevels, marks existing entries as swept, and extends their lines.
+// ---------------------------------------------------------------------------
+f_updateEqLevels() =>
+    // --- Swing HIGH (confirmed i_pivotLen bars ago) ---
+    float ph = ta.pivothigh(high, i_pivotLen, i_pivotLen)
+    if not na(ph)
+        bool alreadyExistsH = false
+        if eqLevels.size() > 0
+            for j = 0 to eqLevels.size() - 1
+                eq = eqLevels.get(j)
+                if eq.dir == 1 and math.abs(eq.price - ph) / ph * 100 <= i_eqTolerance
+                    alreadyExistsH := true
+                    break
+        if not alreadyExistsH
+            newEq = EqLevel.new(ph, bar_index - i_pivotLen, 1, false, na)
+            if i_showEqHL
+                newEq.ln := line.new(bar_index - i_pivotLen, ph, bar_index, ph,
+                             color = i_eqColor, style = line.style_dotted, width = 1)
+            eqLevels.push(newEq)
+
+    // --- Swing LOW (confirmed i_pivotLen bars ago) ---
+    float pl = ta.pivotlow(low, i_pivotLen, i_pivotLen)
+    if not na(pl)
+        bool alreadyExistsL = false
+        if eqLevels.size() > 0
+            for j = 0 to eqLevels.size() - 1
+                eq = eqLevels.get(j)
+                if eq.dir == -1 and math.abs(eq.price - pl) / pl * 100 <= i_eqTolerance
+                    alreadyExistsL := true
+                    break
+        if not alreadyExistsL
+            newEq = EqLevel.new(pl, bar_index - i_pivotLen, -1, false, na)
+            if i_showEqHL
+                newEq.ln := line.new(bar_index - i_pivotLen, pl, bar_index, pl,
+                             color = i_eqColor, style = line.style_dotted, width = 1)
+            eqLevels.push(newEq)
+
+    // --- Extend active lines and mark swept on close-through ---
+    // Swing HIGH swept: close > level  (price closed above — liquidity taken)
+    // Swing LOW  swept: close < level  (price closed below — liquidity taken)
+    if eqLevels.size() > 0
+        for j = 0 to eqLevels.size() - 1
+            eq = eqLevels.get(j)
+            if not eq.swept
+                if not na(eq.ln)
+                    line.set_x2(eq.ln, bar_index)
+                if eq.dir == 1 and close > eq.price
+                    eq.swept := true
+                    if not na(eq.ln)
+                        line.set_color(eq.ln, color.new(color.gray, 60))
+                else if eq.dir == -1 and close < eq.price
+                    eq.swept := true
+                    if not na(eq.ln)
+                        line.set_color(eq.ln, color.new(color.gray, 60))
+
+    // --- Cap array to prevent unbounded growth (reuse i_fvgMax) ---
+    while eqLevels.size() > i_fvgMax
+        old = eqLevels.shift()
+        if not na(old.ln)
+            line.delete(old.ln)
+
+// ---------------------------------------------------------------------------
+// f_getInternalStructure(dir) → float
+// Returns the nearest UNSWEPT internal structure level in the trade direction.
+//   dir =  1 → nearest unswept swing HIGH strictly above close  (long BE)
+//   dir = -1 → nearest unswept swing LOW  strictly below close  (short BE)
+// Returns na when no qualifying level exists (trade allowed by default).
+// ---------------------------------------------------------------------------
+f_getInternalStructure(int dir) =>
+    float best = na
+    if eqLevels.size() > 0
+        for i = eqLevels.size() - 1 to 0
+            eq = eqLevels.get(i)
+            if eq.swept
+                continue
+            if dir == 1
+                // Long: nearest swing HIGH above close (closest = smallest value)
+                if eq.dir == 1 and eq.price > close
+                    if na(best) or eq.price < best
+                        best := eq.price
+            else
+                // Short: nearest swing LOW below close (closest = largest value)
+                if eq.dir == -1 and eq.price < close
+                    if na(best) or eq.price > best
+                        best := eq.price
+    best
+
+// ---------------------------------------------------------------------------
+// f_internalStructureOK(dir) → bool
+// true  = structure intact → safe to enter
+// false = structure already taken → BLOCK the signal
+// na level means no structure found → allow trade (permissive default)
+// ---------------------------------------------------------------------------
+f_internalStructureOK(int dir) =>
+    float lvl = f_getInternalStructure(dir)
+    if na(lvl)
+        true
+    else
+        dir == 1 ? close < lvl : close > lvl
+
+// --- Break-even level persistent line objects ---
+var line ln_beLong  = na
+var line ln_beShort = na
+
+// ---------------------------------------------------------------------------
+// f_drawBELevel(dir, lvl)
+// Draws (or replaces) the break-even dashed line after a valid signal fires.
+// The previous line for that direction is deleted before creating the new one
+// so the chart never shows stale BE levels from earlier signals.
+// ---------------------------------------------------------------------------
+f_drawBELevel(int dir, float lvl) =>
+    if not na(lvl)
+        if dir == 1
+            if not na(ln_beLong)
+                line.delete(ln_beLong)
+            ln_beLong := line.new(bar_index, lvl, bar_index + 1, lvl,
+                                  color  = i_beLevelColor,
+                                  style  = line.style_dashed,
+                                  width  = 2,
+                                  extend = extend.right)
+            label.new(bar_index, lvl, "BE ▲",
+                      style     = label.style_label_left,
+                      color     = color.new(i_beLevelColor, 30),
+                      textcolor = color.white,
+                      size      = size.tiny)
+        else
+            if not na(ln_beShort)
+                line.delete(ln_beShort)
+            ln_beShort := line.new(bar_index, lvl, bar_index + 1, lvl,
+                                   color  = i_beLevelColor,
+                                   style  = line.style_dashed,
+                                   width  = 2,
+                                   extend = extend.right)
+            label.new(bar_index, lvl, "BE ▼",
+                      style     = label.style_label_left,
+                      color     = color.new(i_beLevelColor, 30),
+                      textcolor = color.white,
+                      size      = size.tiny)
 
 // ============================================================================
 // SECTION 10: RECENT EVENT LOOKBACK
@@ -561,8 +730,9 @@ if isBearFVG and sessionOK
 
 capFVGArray(fvgArr, i_fvgMax)
 
-// --- HTF FVG Detection ---
-if i_showHTF and sessionOK
+// --- HTF FVG Detection (deduplicated: only on new HTF bar) ---
+bool htfTimeChanged = ta.change(time(i_htfTF)) != 0
+if i_showHTF and sessionOK and htfTimeChanged
     if htfBullFVG and not na(htfL0) and not na(htfH2)
         htfGapTop    = htfL0
         htfGapBottom = htfH2
