@@ -166,6 +166,7 @@ var float smtPrevMyLow     = na
 var float smtPrevMyCorrLow = na
 var float smtPrevMyHigh    = na
 var float smtPrevCorrHigh  = na
+var array<label> smtLabels = array.new<label>()
 
 // --- Pre-Market H/L tracking (4:00–9:30 ET) ---
 var float preMarketHigh = na
@@ -1232,6 +1233,9 @@ if smtEnabled
         if not na(smtPrevMyLow) and smtMyPL < smtPrevMyLow
             if not na(smtCorrPL) and not na(smtPrevMyCorrLow) and smtCorrPL >= smtPrevMyCorrLow
                 bullishSMT := true
+            else if na(smtCorrPL) and not na(smtPrevMyCorrLow)
+                // Correlated didn't even confirm a new pivot low = divergence
+                bullishSMT := true
         smtPrevMyLow := smtMyPL
 
     if not na(smtCorrPL)
@@ -1241,8 +1245,6 @@ if smtEnabled
     if not na(smtMyPH)
         if not na(smtPrevMyHigh) and smtMyPH > smtPrevMyHigh
             if not na(smtCorrPH) and not na(smtPrevCorrHigh) and smtCorrPH <= smtPrevCorrHigh
-                bearishSMT := true
-            else if na(smtCorrPH) and not na(smtPrevCorrHigh)
                 bearishSMT := true
         smtPrevMyHigh := smtMyPH
 
