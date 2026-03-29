@@ -551,8 +551,8 @@ f_noBlockingEqLevel(int dir) =>
     if eqLevels.size() > 0
         for i = 0 to eqLevels.size() - 1
             eq = eqLevels.get(i)
-            if eq.swept or na(eq.ln)
-                continue  // Skip swept levels AND unmatched single pivots (no line = not equal)
+            if eq.swept or na(eq.ln) or line.get_style(eq.ln) != line.style_dashed
+                continue  // Skip swept levels, unmatched pivots (no line), AND raw pivots (dotted) — only block on confirmed equal pairs (dashed)
             float dist = math.abs(eq.price - close) / close * 100.0
             if dist > 2.0
                 continue  // Skip levels more than 2% away (too distant to be relevant)
