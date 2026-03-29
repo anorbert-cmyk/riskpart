@@ -722,8 +722,8 @@ f_isInsideHTFFVG(int dir) =>
 
 htfBullFVG_raw = request.security(syminfo.tickerid, i_htfTF, low > high[2])
 htfBearFVG_raw = request.security(syminfo.tickerid, i_htfTF, high < low[2])
-bool htfBullFVG = not na(htfBullFVG_raw) ? htfBullFVG_raw : false
-bool htfBearFVG = not na(htfBearFVG_raw) ? htfBearFVG_raw : false
+bool htfBullFVG = htfBullFVG_raw == true
+bool htfBearFVG = htfBearFVG_raw == true
 
 // HTF OHLC for FVG gap values
 [htfH2, htfL2, htfH0, htfL0] = request.security(syminfo.tickerid, i_htfTF, [high[2], low[2], high, low])
@@ -731,14 +731,14 @@ bool htfBearFVG = not na(htfBearFVG_raw) ? htfBearFVG_raw : false
 // LTF FVG reaction (5m)
 ltfBullFVG_raw = request.security(syminfo.tickerid, i_ltfTF, low > high[2])
 ltfBearFVG_raw = request.security(syminfo.tickerid, i_ltfTF, high < low[2])
-bool ltfBullFVG = not na(ltfBullFVG_raw) ? ltfBullFVG_raw : false
-bool ltfBearFVG = not na(ltfBearFVG_raw) ? ltfBearFVG_raw : false
+bool ltfBullFVG = ltfBullFVG_raw == true
+bool ltfBearFVG = ltfBearFVG_raw == true
 
 // LTF2 FVG reaction (15m) — FIX L
 ltf2BullFVG_raw = request.security(syminfo.tickerid, i_ltfTF2, low > high[2])
 ltf2BearFVG_raw = request.security(syminfo.tickerid, i_ltfTF2, high < low[2])
-bool ltf2BullFVG = not na(ltf2BullFVG_raw) ? ltf2BullFVG_raw : false
-bool ltf2BearFVG = not na(ltf2BearFVG_raw) ? ltf2BearFVG_raw : false
+bool ltf2BullFVG = ltf2BullFVG_raw == true
+bool ltf2BearFVG = ltf2BearFVG_raw == true
 
 // ============================================================================
 // SECTION 13: MAIN EXECUTION
