@@ -134,8 +134,8 @@ bool wtFracL = f_isFractalLow(wt1, i_wtFracLB)
 // Previous fractal high values — occurrence max = 2
 float wtFH1     = ta.valuewhen(wtFracH, wt1[i_wtFracLB], 0)
 float wtFH2     = ta.valuewhen(wtFracH, wt1[i_wtFracLB], 1)
-int   wtFHBar1  = ta.valuewhen(wtFracH, bar_index[i_wtFracLB], 0)
-int   wtFHBar2  = ta.valuewhen(wtFracH, bar_index[i_wtFracLB], 1)
+float wtFHBar1  = ta.valuewhen(wtFracH, bar_index[i_wtFracLB], 0)
+float wtFHBar2  = ta.valuewhen(wtFracH, bar_index[i_wtFracLB], 1)
 
 float wtPrH1    = ta.valuewhen(wtFracH, high[i_wtFracLB], 0)
 float wtPrH2    = ta.valuewhen(wtFracH, high[i_wtFracLB], 1)
@@ -143,8 +143,8 @@ float wtPrH2    = ta.valuewhen(wtFracH, high[i_wtFracLB], 1)
 // Previous fractal low values
 float wtFL1     = ta.valuewhen(wtFracL, wt1[i_wtFracLB], 0)
 float wtFL2     = ta.valuewhen(wtFracL, wt1[i_wtFracLB], 1)
-int   wtFLBar1  = ta.valuewhen(wtFracL, bar_index[i_wtFracLB], 0)
-int   wtFLBar2  = ta.valuewhen(wtFracL, bar_index[i_wtFracLB], 1)
+float wtFLBar1  = ta.valuewhen(wtFracL, bar_index[i_wtFracLB], 0)
+float wtFLBar2  = ta.valuewhen(wtFracL, bar_index[i_wtFracLB], 1)
 
 float wtPrL1    = ta.valuewhen(wtFracL, low[i_wtFracLB], 0)
 float wtPrL2    = ta.valuewhen(wtFracL, low[i_wtFracLB], 1)
@@ -260,6 +260,12 @@ var int lastWTBearBar  = na
 var int lastVolBullBar = na
 var int lastVolBearBar = na
 
+// Duplicate prevention: track the bar-pair that last produced a combined signal
+var int lastCombBullWT  = na
+var int lastCombBullVol = na
+var int lastCombBearWT  = na
+var int lastCombBearVol = na
+
 // Update on each divergence
 if wtBullDivFilt
     lastWTBullBar := bar_index
@@ -272,13 +278,47 @@ if volBearDiv
 
 // Combined signal: both fired within the confluence window
 // Fires on the bar where the LATER (confirming) divergence appears
-bool combinedBull = not na(lastWTBullBar) and not na(lastVolBullBar) and
+// Conflicting divergences (WT bull + Vol bear or vice versa) produce NO combined signal
+bool _rawCombBull = not na(lastWTBullBar) and not na(lastVolBullBar) and
                     math.abs(lastWTBullBar - lastVolBullBar) <= i_confWindow and
                     (lastWTBullBar == bar_index or lastVolBullBar == bar_index)
 
-bool combinedBear = not na(lastWTBearBar) and not na(lastVolBearBar) and
+bool _rawCombBear = not na(lastWTBearBar) and not na(lastVolBearBar) and
                     math.abs(lastWTBearBar - lastVolBearBar) <= i_confWindow and
                     (lastWTBearBar == bar_index or lastVolBearBar == bar_index)
+
+// Suppress if a conflicting divergence fired within the same window on the opposite side
+// e.g. WT bullish + Vol bearish on nearby bars = ambiguous, no combined signal
+// Check BOTH WT and Vol opposite-direction signals for full conflict detection
+bool bullConflict = _rawCombBull and (
+                    (not na(lastWTBearBar) and math.abs(bar_index - lastWTBearBar) <= i_confWindow) or
+                    (not na(lastVolBearBar) and math.abs(bar_index - lastVolBearBar) <= i_confWindow))
+bool bearConflict = _rawCombBear and (
+                    (not na(lastWTBullBar) and math.abs(bar_index - lastWTBullBar) <= i_confWindow) or
+                    (not na(lastVolBullBar) and math.abs(bar_index - lastVolBullBar) <= i_confWindow))
+
+// Duplicate prevention: don't fire the same bar-pair twice
+bool bullDuplicate = _rawCombBull and
+                     lastWTBullBar == lastCombBullWT and
+                     lastVolBullBar == lastCombBullVol
+bool bearDuplicate = _rawCombBear and
+                     lastWTBearBar == lastCombBearWT and
+                     lastVolBearBar == lastCombBearVol
+
+bool combinedBull = _rawCombBull and not bullConflict and not bullDuplicate
+bool combinedBear = _rawCombBear and not bearConflict and not bearDuplicate
+
+// Edge case: both divergences fire on exact same bar = strongest combined signal
+bool sameBarBull = combinedBull and lastWTBullBar == lastVolBullBar
+bool sameBarBear = combinedBear and lastWTBearBar == lastVolBearBar
+
+// Record consumed bar-pairs to prevent duplicates
+if combinedBull
+    lastCombBullWT  := lastWTBullBar
+    lastCombBullVol := lastVolBullBar
+if combinedBear
+    lastCombBearWT  := lastWTBearBar
+    lastCombBearVol := lastVolBearBar
 
 // ─────────────────────────────────────────────────────────────────────
 // SECTION 7: SIGNAL SCORING
@@ -288,25 +328,20 @@ bool combinedBear = not na(lastWTBearBar) and not na(lastVolBearBar) and
 bool tier1Bull = (wtBullDivFilt or volBullDiv) and not combinedBull
 bool tier1Bear = (wtBearDivFilt or volBearDiv) and not combinedBear
 
-// Tier 2: both diverge within window
-bool tier2Bull = combinedBull and not (
-                    (i_useDeltaFilt ? deltaBullOK : true) and
-                    (wtOS1 or wtOS2) and
-                    highVol)
-bool tier2Bear = combinedBear and not (
-                    (i_useDeltaFilt ? deltaBearOK : true) and
-                    (wtOB1 or wtOB2) and
-                    highVol)
-
-// Tier 3: both diverge + delta confirms + WT extreme + high normVol
+// Tier 3: both diverge + delta confirms + WT in EXTREME zone + high normVol
+// Must use extreme levels (ob2/os2) to match standalone v6's 3-star criteria
 bool tier3Bull = combinedBull and
                  (i_useDeltaFilt ? deltaBullOK : true) and
-                 (wtOS1 or wtOS2) and
+                 wtOS2 and
                  highVol
 bool tier3Bear = combinedBear and
                  (i_useDeltaFilt ? deltaBearOK : true) and
-                 (wtOB1 or wtOB2) and
+                 wtOB2 and
                  highVol
+
+// Tier 2: both diverge within window, but NOT meeting Tier 3 criteria
+bool tier2Bull = combinedBull and not tier3Bull
+bool tier2Bear = combinedBear and not tier3Bear
 
 // ─────────────────────────────────────────────────────────────────────
 // SECTION 8: PLOTTING
@@ -355,8 +390,7 @@ plotshape(wtBearDivFilt ? wt1[i_wtFracLB] : na, "WT Bear Div",
           color=i_colBear, size=size.tiny, offset=-i_wtFracLB)
 
 // --- Price chart labels via force_overlay ---
-string lblSz = i_lblSize
-var lblSizeVal = size.small
+string lblSizeVal = size.small
 
 // We resolve label size once — use the function defined earlier
 lblSizeVal := f_labelSize(i_lblSize)
@@ -374,23 +408,27 @@ if i_showT1 and tier1Bear and not tier2Bear and not tier3Bear
 
 // Tier 2 labels (combined)
 if i_showT2 and tier2Bull
-    label.new(bar_index, low, "★★ COMBINED Bull",
+    string t2BullTxt = sameBarBull ? "★★ COMBINED Bull [SYNC]" : "★★ COMBINED Bull"
+    label.new(bar_index, low, t2BullTxt,
               style=label.style_label_up, color=i_colBull,
               textcolor=color.white, size=lblSizeVal, force_overlay=true)
 
 if i_showT2 and tier2Bear
-    label.new(bar_index, high, "★★ COMBINED Bear",
+    string t2BearTxt = sameBarBear ? "★★ COMBINED Bear [SYNC]" : "★★ COMBINED Bear"
+    label.new(bar_index, high, t2BearTxt,
               style=label.style_label_down, color=i_colBear,
               textcolor=color.white, size=lblSizeVal, force_overlay=true)
 
 // Tier 3 labels (high conviction)
 if i_showT3 and tier3Bull
-    label.new(bar_index, low, "★★★ COMBINED Bull [EXTREME]",
+    string t3BullTxt = sameBarBull ? "★★★ COMBINED Bull [EXTREME+SYNC]" : "★★★ COMBINED Bull [EXTREME]"
+    label.new(bar_index, low, t3BullTxt,
               style=label.style_label_up, color=color.new(#00c853, 0),
               textcolor=color.white, size=lblSizeVal, force_overlay=true)
 
 if i_showT3 and tier3Bear
-    label.new(bar_index, high, "★★★ COMBINED Bear [EXTREME]",
+    string t3BearTxt = sameBarBear ? "★★★ COMBINED Bear [EXTREME+SYNC]" : "★★★ COMBINED Bear [EXTREME]"
+    label.new(bar_index, high, t3BearTxt,
               style=label.style_label_down, color=color.new(#d50000, 0),
               textcolor=color.white, size=lblSizeVal, force_overlay=true)
 
