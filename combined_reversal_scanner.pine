@@ -150,28 +150,10 @@ float wtPrL1    = ta.valuewhen(wtFracL, low[i_wtFracLB], 0)
 float wtPrL2    = ta.valuewhen(wtFracL, low[i_wtFracLB], 1)
 
 // Regular bearish: price higher high, WT lower high
-bool wtBearRegDiv = wtFracH and
-                    not na(wtFH2) and
-                    wtPrH1 > wtPrH2 and
-                    wtFH1 < wtFH2
-
-// Regular bullish: price lower low, WT higher low
-bool wtBullRegDiv = wtFracL and
-                    not na(wtFL2) and
-                    wtPrL1 < wtPrL2 and
-                    wtFL1 > wtFL2
-
-// Hidden bearish: price lower high, WT higher high
-bool wtBearHidDiv = wtFracH and
-                    not na(wtFH2) and
-                    wtPrH1 < wtPrH2 and
-                    wtFH1 > wtFH2
-
-// Hidden bullish: price higher low, WT lower low
-bool wtBullHidDiv = wtFracL and
-                    not na(wtFL2) and
-                    wtPrL1 > wtPrL2 and
-                    wtFL1 < wtFL2
+bool wtBearRegDiv = wtFracH and not na(wtFH2) and wtPrH1 > wtPrH2 and wtFH1 < wtFH2
+bool wtBullRegDiv = wtFracL and not na(wtFL2) and wtPrL1 < wtPrL2 and wtFL1 > wtFL2
+bool wtBearHidDiv = wtFracH and not na(wtFH2) and wtPrH1 < wtPrH2 and wtFH1 > wtFH2
+bool wtBullHidDiv = wtFracL and not na(wtFL2) and wtPrL1 > wtPrL2 and wtFL1 < wtFL2
 
 // Apply volume filter
 bool wtBullDiv = (wtBullRegDiv or wtBullHidDiv) and (not i_useVolFilt or highVol)
@@ -229,26 +211,13 @@ if not na(pivLow)
     currPivLowBar   := bar_index - pivotOffset
 
 // Distance checks
-bool pivHighInRange = not na(prevPivHighBar) and not na(currPivHighBar) and
-                      (currPivHighBar - prevPivHighBar) <= i_maxPivBars
+bool pivHighInRange = not na(prevPivHighBar) and not na(currPivHighBar) and (currPivHighBar - prevPivHighBar) <= i_maxPivBars
+bool pivLowInRange = not na(prevPivLowBar) and not na(currPivLowBar) and (currPivLowBar - prevPivLowBar) <= i_maxPivBars
 
-bool pivLowInRange  = not na(prevPivLowBar) and not na(currPivLowBar) and
-                      (currPivLowBar - prevPivLowBar) <= i_maxPivBars
-
-// Volume bearish divergence: price makes higher high, volume (normVol) is lower at new pivot
-bool volBearDiv = not na(pivHigh) and
-                  pivHighInRange and
-                  not na(prevPivHighPrice) and
-                  currPivHighPrice > prevPivHighPrice and
-                  currPivHighVol < prevPivHighVol
-
-// Volume bullish divergence: price makes lower low, volume is HIGHER at new pivot
-// (rising volume on lower lows = capitulation / selling climax — smart money accumulating)
-bool volBullDiv = not na(pivLow) and
-                  pivLowInRange and
-                  not na(prevPivLowPrice) and
-                  currPivLowPrice < prevPivLowPrice and
-                  currPivLowVol > prevPivLowVol
+// Bearish: price higher high + volume LOWER (exhaustion)
+bool volBearDiv = not na(pivHigh) and pivHighInRange and not na(prevPivHighPrice) and currPivHighPrice > prevPivHighPrice and currPivHighVol < prevPivHighVol
+// Bullish: price lower low + volume HIGHER (capitulation)
+bool volBullDiv = not na(pivLow) and pivLowInRange and not na(prevPivLowPrice) and currPivLowPrice < prevPivLowPrice and currPivLowVol > prevPivLowVol
 
 // ─────────────────────────────────────────────────────────────────────
 // SECTION 6: COMBINED SIGNAL LOGIC
@@ -279,31 +248,18 @@ if volBearDiv
 // Combined signal: both fired within the confluence window
 // Fires on the bar where the LATER (confirming) divergence appears
 // Conflicting divergences (WT bull + Vol bear or vice versa) produce NO combined signal
-bool _rawCombBull = not na(lastWTBullBar) and not na(lastVolBullBar) and
-                    math.abs(lastWTBullBar - lastVolBullBar) <= i_confWindow and
-                    (lastWTBullBar == bar_index or lastVolBullBar == bar_index)
-
-bool _rawCombBear = not na(lastWTBearBar) and not na(lastVolBearBar) and
-                    math.abs(lastWTBearBar - lastVolBearBar) <= i_confWindow and
-                    (lastWTBearBar == bar_index or lastVolBearBar == bar_index)
+bool _rawCombBull = not na(lastWTBullBar) and not na(lastVolBullBar) and math.abs(lastWTBullBar - lastVolBullBar) <= i_confWindow and (lastWTBullBar == bar_index or lastVolBullBar == bar_index)
+bool _rawCombBear = not na(lastWTBearBar) and not na(lastVolBearBar) and math.abs(lastWTBearBar - lastVolBearBar) <= i_confWindow and (lastWTBearBar == bar_index or lastVolBearBar == bar_index)
 
 // Suppress if a conflicting divergence fired within the same window on the opposite side
 // e.g. WT bullish + Vol bearish on nearby bars = ambiguous, no combined signal
 // Check BOTH WT and Vol opposite-direction signals for full conflict detection
-bool bullConflict = _rawCombBull and (
-                    (not na(lastWTBearBar) and math.abs(bar_index - lastWTBearBar) <= i_confWindow) or
-                    (not na(lastVolBearBar) and math.abs(bar_index - lastVolBearBar) <= i_confWindow))
-bool bearConflict = _rawCombBear and (
-                    (not na(lastWTBullBar) and math.abs(bar_index - lastWTBullBar) <= i_confWindow) or
-                    (not na(lastVolBullBar) and math.abs(bar_index - lastVolBullBar) <= i_confWindow))
+bool bullConflict = _rawCombBull and ((not na(lastWTBearBar) and math.abs(bar_index - lastWTBearBar) <= i_confWindow) or (not na(lastVolBearBar) and math.abs(bar_index - lastVolBearBar) <= i_confWindow))
+bool bearConflict = _rawCombBear and ((not na(lastWTBullBar) and math.abs(bar_index - lastWTBullBar) <= i_confWindow) or (not na(lastVolBullBar) and math.abs(bar_index - lastVolBullBar) <= i_confWindow))
 
 // Duplicate prevention: don't fire the same bar-pair twice
-bool bullDuplicate = _rawCombBull and
-                     lastWTBullBar == lastCombBullWT and
-                     lastVolBullBar == lastCombBullVol
-bool bearDuplicate = _rawCombBear and
-                     lastWTBearBar == lastCombBearWT and
-                     lastVolBearBar == lastCombBearVol
+bool bullDuplicate = _rawCombBull and lastWTBullBar == lastCombBullWT and lastVolBullBar == lastCombBullVol
+bool bearDuplicate = _rawCombBear and lastWTBearBar == lastCombBearWT and lastVolBearBar == lastCombBearVol
 
 bool combinedBull = _rawCombBull and not bullConflict and not bullDuplicate
 bool combinedBear = _rawCombBear and not bearConflict and not bearDuplicate
@@ -330,14 +286,8 @@ bool tier1Bear = (wtBearDivFilt or volBearDiv) and not combinedBear
 
 // Tier 3: both diverge + delta confirms + WT in EXTREME zone + high normVol
 // Must use extreme levels (ob2/os2) to match standalone v6's 3-star criteria
-bool tier3Bull = combinedBull and
-                 (i_useDeltaFilt ? deltaBullOK : true) and
-                 wtOS2 and
-                 highVol
-bool tier3Bear = combinedBear and
-                 (i_useDeltaFilt ? deltaBearOK : true) and
-                 wtOB2 and
-                 highVol
+bool tier3Bull = combinedBull and (i_useDeltaFilt ? deltaBullOK : true) and wtOS2 and highVol
+bool tier3Bear = combinedBear and (i_useDeltaFilt ? deltaBearOK : true) and wtOB2 and highVol
 
 // Tier 2: both diverge within window, but NOT meeting Tier 3 criteria
 bool tier2Bull = combinedBull and not tier3Bull
