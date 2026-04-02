@@ -30,6 +30,12 @@ i_showLabels    = input.bool(true, "Show Signal Labels", group = "Signals")
 i_deltaConfirm  = input.bool(true, "Require Delta Confirmation", group = "Signals")
 i_bullColor     = input.color(color.lime, "Bullish Color", group = "Signals")
 i_bearColor     = input.color(color.red, "Bearish Color", group = "Signals")
+i_labelSize     = input.string("Small", "Label Size", options = ["Tiny", "Small", "Normal", "Large"], group = "Signals")
+i_bullIcon      = input.string("▲", "Bullish Icon", group = "Signals")
+i_bearIcon      = input.string("▼", "Bearish Icon", group = "Signals")
+i_showDelta     = input.bool(true, "Show Delta on Label", group = "Signals")
+i_showVol       = input.bool(true, "Show Volume on Label", group = "Signals")
+i_labelStyle    = input.string("Label", "Label Style", options = ["Label", "Shape Arrow", "Shape Diamond", "Shape Cross"], group = "Signals")
 
 // Visual
 i_coldColor = input.color(#2D1B69, "Cold Color (low vol)", group = "Visual")
@@ -143,20 +149,73 @@ float pivotVol   = volume[i_lbR]
 // Delta confirmation logic
 bool deltaOK = not i_deltaConfirm or (bullDiv and pivotDelta > 0) or (bearDiv and pivotDelta < 0)
 
+// Resolve user-configurable label size
+f_getLabelSize() =>
+    switch i_labelSize
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        "Large"  => size.large
+        => size.small
+
+// Build label text based on user toggles
+f_buildLabelText(bool isBull, float vol, float dlt) =>
+    string icon = isBull ? i_bullIcon : i_bearIcon
+    string txt = icon
+    if i_showVol
+        txt += " Vol: " + f_fmtNum(vol, false)
+    if i_showDelta
+        txt += (i_showVol ? " | " : " ") + "\u0394: " + f_fmtNum(dlt, true)
+    txt
+
 // Label management array (cap at 100)
 var array<label> lblArr = array.new<label>()
 
+// --- Signal on the VOLUME PANE (this indicator's pane) ---
 if (bullDiv or bearDiv) and deltaOK and i_showLabels
-    string icon = bullDiv ? "▲" : "▼"
-    string txt  = icon + " Vol: " + f_fmtNum(pivotVol, false) + " | \u0394: " + f_fmtNum(pivotDelta, true)
-    color  lc   = bullDiv ? i_bullColor : i_bearColor
-    label lbl = label.new(pivotBar, pivotNormVol, txt,
-         color = lc, textcolor = color.white, size = size.small,
-         style = bullDiv ? label.style_label_up : label.style_label_down)
-    array.push(lblArr, lbl)
+    string txt = f_buildLabelText(bullDiv, pivotVol, pivotDelta)
+    color  lc  = bullDiv ? i_bullColor : i_bearColor
+
+    if i_labelStyle == "Label"
+        label lbl = label.new(pivotBar, pivotNormVol, txt,
+             color = lc, textcolor = color.white, size = f_getLabelSize(),
+             style = bullDiv ? label.style_label_up : label.style_label_down)
+        array.push(lblArr, lbl)
+    else
+        // For shape styles, use a simple label with the icon only
+        string shapeIcon = bullDiv ? i_bullIcon : i_bearIcon
+        label lbl = label.new(pivotBar, pivotNormVol, shapeIcon,
+             color = color.new(lc, 100), textcolor = lc, size = f_getLabelSize(),
+             style = bullDiv ? label.style_label_up : label.style_label_down)
+        array.push(lblArr, lbl)
+
     // Cap at 100 labels
     if array.size(lblArr) > 100
         label.delete(array.shift(lblArr))
+
+// --- Plotshape signals visible in the volume pane ---
+bool bullSignal = bullDiv and deltaOK
+bool bearSignal = bearDiv and deltaOK
+
+// Shape-based signals (plotshape requires const size, so we use size.small)
+plotshape(bullSignal and i_labelStyle == "Shape Arrow" ? normVol[i_lbR] : na,
+     title = "Bull Arrow", style = shape.triangleup, location = location.absolute,
+     color = i_bullColor, size = size.small, offset = -i_lbR)
+plotshape(bearSignal and i_labelStyle == "Shape Arrow" ? normVol[i_lbR] : na,
+     title = "Bear Arrow", style = shape.triangledown, location = location.absolute,
+     color = i_bearColor, size = size.small, offset = -i_lbR)
+plotshape(bullSignal and i_labelStyle == "Shape Diamond" ? normVol[i_lbR] : na,
+     title = "Bull Diamond", style = shape.diamond, location = location.absolute,
+     color = i_bullColor, size = size.small, offset = -i_lbR)
+plotshape(bearSignal and i_labelStyle == "Shape Diamond" ? normVol[i_lbR] : na,
+     title = "Bear Diamond", style = shape.diamond, location = location.absolute,
+     color = i_bearColor, size = size.small, offset = -i_lbR)
+plotshape(bullSignal and i_labelStyle == "Shape Cross" ? normVol[i_lbR] : na,
+     title = "Bull Cross", style = shape.cross, location = location.absolute,
+     color = i_bullColor, size = size.small, offset = -i_lbR)
+plotshape(bearSignal and i_labelStyle == "Shape Cross" ? normVol[i_lbR] : na,
+     title = "Bear Cross", style = shape.cross, location = location.absolute,
+     color = i_bearColor, size = size.small, offset = -i_lbR)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Section 8: Plotting
