@@ -311,16 +311,12 @@ plot(wt1, "WT1", color=i_colWt1, linewidth=2)
 plot(wt2, "WT2", color=i_colWt2, linewidth=1)
 
 // Histogram
-color histCol = wtDiff >= 0 ?
-                (wtDiff > wtDiff[1] ? color.new(i_colBull, 20) : color.new(i_colBull, 60)) :
-                (wtDiff < wtDiff[1] ? color.new(i_colBear, 20) : color.new(i_colBear, 60))
+color histCol = wtDiff >= 0 ? (wtDiff > wtDiff[1] ? color.new(i_colBull, 20) : color.new(i_colBull, 60)) : (wtDiff < wtDiff[1] ? color.new(i_colBear, 20) : color.new(i_colBear, 60))
 plot(wtDiff, "Histogram", color=histCol, style=plot.style_columns)
 
 // OB/OS gradient zone fill
-color obFill = wt1 > i_ob2 ? color.new(i_colBear, 50) :
-               wt1 > i_ob1 ? color.new(i_colBear, 75) : na
-color osFill = wt1 < i_os2 ? color.new(i_colBull, 50) :
-               wt1 < i_os1 ? color.new(i_colBull, 75) : na
+color obFill = wt1 > i_ob2 ? color.new(i_colBear, 50) : wt1 > i_ob1 ? color.new(i_colBear, 75) : na
+color osFill = wt1 < i_os2 ? color.new(i_colBull, 50) : wt1 < i_os1 ? color.new(i_colBull, 75) : na
 
 bgcolor(obFill, title="OB Zone")
 bgcolor(osFill, title="OS Zone")
