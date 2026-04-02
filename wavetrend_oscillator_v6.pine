@@ -74,17 +74,19 @@ buyVol  = range_ != 0 ? volume * (close - low) / range_ : volume * 0.5
 volDelta = buyVol - (volume - buyVol)
 
 // Volume-price divergence detection for confluence labels
-// Bullish: price made lower low at pivot but normVol is higher than at previous pivot low
+// Bullish: price made lower low at pivot but normVol is HIGHER than at previous pivot low
+// (rising volume on lower lows = capitulation / selling climax — smart money accumulating)
 vpPivotLow     = ta.pivotlow(low, i_fractalLen, i_fractalLen)
 volPriceBullDiv = not na(vpPivotLow) and
                   low[i_fractalLen] < ta.valuewhen(not na(ta.pivotlow(low, i_fractalLen, i_fractalLen)), low[i_fractalLen], 1) and
                   normVol[i_fractalLen] > ta.valuewhen(not na(ta.pivotlow(low, i_fractalLen, i_fractalLen)), normVol[i_fractalLen], 1)
 
-// Bearish: price made higher high at pivot but normVol is higher than at previous pivot high
+// Bearish: price made higher high at pivot but normVol is LOWER than at previous pivot high
+// (declining volume on higher highs = distribution / exhaustion — weak rally)
 vpPivotHigh     = ta.pivothigh(high, i_fractalLen, i_fractalLen)
 volPriceBearDiv = not na(vpPivotHigh) and
                   high[i_fractalLen] > ta.valuewhen(not na(ta.pivothigh(high, i_fractalLen, i_fractalLen)), high[i_fractalLen], 1) and
-                  normVol[i_fractalLen] > ta.valuewhen(not na(ta.pivothigh(high, i_fractalLen, i_fractalLen)), normVol[i_fractalLen], 1)
+                  normVol[i_fractalLen] < ta.valuewhen(not na(ta.pivothigh(high, i_fractalLen, i_fractalLen)), normVol[i_fractalLen], 1)
 
 // ============================================================================
 // SECTION 3: DIRECTION DETECTION
