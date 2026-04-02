@@ -168,54 +168,56 @@ f_buildLabelText(bool isBull, float vol, float dlt) =>
         txt += (i_showVol ? " | " : " ") + "\u0394: " + f_fmtNum(dlt, true)
     txt
 
-// Label management array (cap at 100)
+// --- Signal booleans ---
+bool bullSignal = bullDiv and deltaOK
+bool bearSignal = bearDiv and deltaOK
+
+// --- Labels on the PRICE CHART (force_overlay = true) ---
+// This makes labels appear on the main trading chart even though the indicator is overlay=false
 var array<label> lblArr = array.new<label>()
 
-// --- Signal on the VOLUME PANE (this indicator's pane) ---
-if (bullDiv or bearDiv) and deltaOK and i_showLabels
-    string txt = f_buildLabelText(bullDiv, pivotVol, pivotDelta)
-    color  lc  = bullDiv ? i_bullColor : i_bearColor
+if (bullSignal or bearSignal) and i_showLabels
+    string txt = f_buildLabelText(bullSignal, pivotVol, pivotDelta)
+    color  lc  = bullSignal ? i_bullColor : i_bearColor
+    float  yPos = bullSignal ? low[i_lbR] : high[i_lbR]
 
     if i_labelStyle == "Label"
-        label lbl = label.new(pivotBar, pivotNormVol, txt,
+        label lbl = label.new(pivotBar, yPos, txt,
              color = lc, textcolor = color.white, size = f_getLabelSize(),
-             style = bullDiv ? label.style_label_up : label.style_label_down)
+             style = bullSignal ? label.style_label_up : label.style_label_down,
+             force_overlay = true)
         array.push(lblArr, lbl)
     else
-        // For shape styles, use a simple label with the icon only
-        string shapeIcon = bullDiv ? i_bullIcon : i_bearIcon
-        label lbl = label.new(pivotBar, pivotNormVol, shapeIcon,
+        string shapeIcon = bullSignal ? i_bullIcon : i_bearIcon
+        label lbl = label.new(pivotBar, yPos, shapeIcon,
              color = color.new(lc, 100), textcolor = lc, size = f_getLabelSize(),
-             style = bullDiv ? label.style_label_up : label.style_label_down)
+             style = bullSignal ? label.style_label_up : label.style_label_down,
+             force_overlay = true)
         array.push(lblArr, lbl)
 
     // Cap at 100 labels
     if array.size(lblArr) > 100
         label.delete(array.shift(lblArr))
 
-// --- Plotshape signals visible in the volume pane ---
-bool bullSignal = bullDiv and deltaOK
-bool bearSignal = bearDiv and deltaOK
-
-// Shape-based signals (plotshape requires const size, so we use size.small)
-plotshape(bullSignal and i_labelStyle == "Shape Arrow" ? normVol[i_lbR] : na,
-     title = "Bull Arrow", style = shape.triangleup, location = location.absolute,
-     color = i_bullColor, size = size.small, offset = -i_lbR)
-plotshape(bearSignal and i_labelStyle == "Shape Arrow" ? normVol[i_lbR] : na,
-     title = "Bear Arrow", style = shape.triangledown, location = location.absolute,
-     color = i_bearColor, size = size.small, offset = -i_lbR)
-plotshape(bullSignal and i_labelStyle == "Shape Diamond" ? normVol[i_lbR] : na,
-     title = "Bull Diamond", style = shape.diamond, location = location.absolute,
-     color = i_bullColor, size = size.small, offset = -i_lbR)
-plotshape(bearSignal and i_labelStyle == "Shape Diamond" ? normVol[i_lbR] : na,
-     title = "Bear Diamond", style = shape.diamond, location = location.absolute,
-     color = i_bearColor, size = size.small, offset = -i_lbR)
-plotshape(bullSignal and i_labelStyle == "Shape Cross" ? normVol[i_lbR] : na,
-     title = "Bull Cross", style = shape.cross, location = location.absolute,
-     color = i_bullColor, size = size.small, offset = -i_lbR)
-plotshape(bearSignal and i_labelStyle == "Shape Cross" ? normVol[i_lbR] : na,
-     title = "Bear Cross", style = shape.cross, location = location.absolute,
-     color = i_bearColor, size = size.small, offset = -i_lbR)
+// --- Plotshape signals on the PRICE CHART (force_overlay = true) ---
+plotshape(bullSignal and i_labelStyle == "Shape Arrow", title = "Bull Arrow",
+     style = shape.triangleup, location = location.belowbar,
+     color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bearSignal and i_labelStyle == "Shape Arrow", title = "Bear Arrow",
+     style = shape.triangledown, location = location.abovebar,
+     color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bullSignal and i_labelStyle == "Shape Diamond", title = "Bull Diamond",
+     style = shape.diamond, location = location.belowbar,
+     color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bearSignal and i_labelStyle == "Shape Diamond", title = "Bear Diamond",
+     style = shape.diamond, location = location.abovebar,
+     color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bullSignal and i_labelStyle == "Shape Cross", title = "Bull Cross",
+     style = shape.cross, location = location.belowbar,
+     color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bearSignal and i_labelStyle == "Shape Cross", title = "Bear Cross",
+     style = shape.cross, location = location.abovebar,
+     color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Section 8: Plotting
