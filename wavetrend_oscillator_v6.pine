@@ -1,0 +1,349 @@
+// ============================================================================
+// WaveTrend Oscillator v6 — Enhanced Divergence Detection
+// Pine Script v6 | Configurable Fractals, Multi-Pivot, Volume Filter
+// ============================================================================
+//@version=6
+indicator("WaveTrend Oscillator v6", overlay = false, max_lines_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// SECTION 1: INPUTS
+// ============================================================================
+
+// --- WaveTrend Core ---
+i_wtChannel  = input.int(10,  "Channel Length",       minval = 1,  group = "WaveTrend")
+i_wtAvg      = input.int(21,  "Average Length",        minval = 1,  group = "WaveTrend")
+i_wtSmooth   = input.int(4,   "Signal Smoothing (MA)", minval = 1,  group = "WaveTrend")
+i_wtSource   = input.source(hlc3, "Source",                         group = "WaveTrend")
+i_reaction   = input.int(1,   "Direction Reaction",    minval = 1,  group = "WaveTrend")
+
+// --- Overbought / Oversold Levels ---
+i_ob         = input.int(53,  "Overbought Level",     minval = 1,  group = "Levels")
+i_os         = input.int(-53, "Oversold Level",        maxval = -1, group = "Levels")
+i_obExtreme  = input.int(73,  "Extreme Overbought",   minval = 1,  group = "Levels")
+i_osExtreme  = input.int(-73, "Extreme Oversold",      maxval = -1, group = "Levels")
+
+// --- Signals ---
+i_obSignalsOnly = input.bool(true, "Sell Only in OB Zone", group = "Signals")
+i_osSignalsOnly = input.bool(true, "Buy Only in OS Zone",  group = "Signals")
+
+// --- Divergence Settings ---
+i_showDiv    = input.bool(true, "Show Divergences",                 group = "Divergence")
+i_fractalLen = input.int(2,    "Fractal Lookback",     minval = 1, maxval = 5, group = "Divergence")
+i_multiPivot = input.bool(true, "Multi-Pivot Divergence (2nd/3rd)", group = "Divergence")
+i_showLines  = input.bool(true, "Draw Divergence Lines",           group = "Divergence")
+
+// --- Volume Filter ---
+i_useVolFilter = input.bool(false, "Volume Confirmation",          group = "Divergence")
+i_volLen       = input.int(20,     "Volume SMA Length", minval = 5, group = "Divergence")
+
+// --- Visual ---
+i_showHist       = input.bool(true,  "Show Histogram",              group = "Visual")
+i_obOsCrossOnly  = input.bool(true,  "OB/OS Crosses Only",          group = "Visual")
+i_barColor       = input.bool(true,  "Color Bars on Signals",       group = "Visual")
+i_bullColor      = input.color(color.new(color.green, 20), "Bullish Divergence Color", group = "Visual")
+i_bearColor      = input.color(color.new(color.red, 20),   "Bearish Divergence Color", group = "Visual")
+
+// ============================================================================
+// SECTION 2: WAVETREND CALCULATION (with d != 0 guard)
+// ============================================================================
+
+esa      = ta.ema(i_wtSource, i_wtChannel)
+d        = ta.ema(math.abs(i_wtSource - esa), i_wtChannel)
+ci       = d != 0 ? (i_wtSource - esa) / (0.015 * d) : 0.0
+wt1      = ta.ema(ci, i_wtAvg)
+wt2      = ta.sma(wt1, i_wtSmooth)
+wtDiff   = wt1 - wt2
+
+// ============================================================================
+// SECTION 3: DIRECTION DETECTION
+// ============================================================================
+
+var int direction = 0
+direction := wt1 > wt1[i_reaction] ? 1 : wt1 < wt1[i_reaction] ? -1 : direction[1]
+wt1Color = direction > 0 ? color.green : direction < 0 ? color.red : color.gray
+
+// ============================================================================
+// SECTION 4: SIGNALS
+// ============================================================================
+
+sellSignal = ta.crossunder(wt1, wt2) and (not i_obSignalsOnly or wt1 >= i_ob)
+buySignal  = ta.crossover(wt1, wt2)  and (not i_osSignalsOnly or wt1 <= i_os)
+ploff      = 4
+
+// ============================================================================
+// SECTION 5: PLOTTING — WT LINES, SIGNALS, HISTOGRAM, ZONES
+// ============================================================================
+
+// --- WT Lines (colored by direction) ---
+plot(wt1, "WT1", color = wt1Color, linewidth = 2)
+plot(wt2, "WT2", color = color.new(#ff5722, 0), linewidth = 1)
+
+// --- Zero Line (literal 0 is compile-time constant, ok for hline) ---
+hline(0, "Zero", color = color.new(color.gray, 50), linestyle = hline.style_dotted)
+
+// --- OB/OS Levels via plot() to avoid hline compile-time constant error ---
+p_ob  = plot(i_ob,  "Overbought", color = color.new(color.red, 70),   style = plot.style_line)
+p_os  = plot(i_os,  "Oversold",   color = color.new(color.green, 70), style = plot.style_line)
+
+// --- Gradient OB zone (3 layers) ---
+p_ob_25  = plot(i_ob + (i_obExtreme - i_ob) * 0.33, display = display.none, editable = false)
+p_ob_50  = plot(i_ob + (i_obExtreme - i_ob) * 0.66, display = display.none, editable = false)
+p_ob_100 = plot(i_obExtreme, "Extreme OB", color = color.new(color.red, 50), style = plot.style_line)
+fill(p_ob, p_ob_25,   color = color.new(color.red, 88), title = "OB Zone 1")
+fill(p_ob_25, p_ob_50, color = color.new(color.red, 80), title = "OB Zone 2")
+fill(p_ob_50, p_ob_100, color = color.new(color.red, 70), title = "OB Zone 3")
+
+// --- Gradient OS zone (3 layers) ---
+p_os_25  = plot(i_os + (i_osExtreme - i_os) * 0.33, display = display.none, editable = false)
+p_os_50  = plot(i_os + (i_osExtreme - i_os) * 0.66, display = display.none, editable = false)
+p_os_100 = plot(i_osExtreme, "Extreme OS", color = color.new(color.green, 50), style = plot.style_line)
+fill(p_os, p_os_25,   color = color.new(color.green, 88), title = "OS Zone 1")
+fill(p_os_25, p_os_50, color = color.new(color.green, 80), title = "OS Zone 2")
+fill(p_os_50, p_os_100, color = color.new(color.green, 70), title = "OS Zone 3")
+
+// --- Momentum Histogram with directional coloring ---
+histUp      = wtDiff >= 0 and wtDiff > wtDiff[1]
+histUpFade  = wtDiff >= 0 and wtDiff <= wtDiff[1]
+histDn      = wtDiff <  0 and wtDiff < wtDiff[1]
+histDnFade  = wtDiff <  0 and wtDiff >= wtDiff[1]
+
+histColor = histUp     ? color.new(#26a69a, 30) :
+             histUpFade ? color.new(#26a69a, 70) :
+             histDn     ? color.new(#ef5350, 30) :
+                          color.new(#ef5350, 70)
+
+plot(i_showHist ? wtDiff : na, "Histogram", color = histColor, style = plot.style_columns)
+
+// --- Cross circles (zone-gated, visible color) ---
+crossCond = ta.cross(wt1, wt2) and (not i_obOsCrossOnly or wt1 > i_ob or wt1 < i_os)
+plot(crossCond ? wt2 : na, "Cross", color = color.new(#555555, 0),
+     style = plot.style_circles, linewidth = 3)
+
+// --- Buy/Sell signal dots ---
+plot(sellSignal ? wt2 + ploff : na, "Sell Signal", style = plot.style_circles, color = color.red,   linewidth = 3)
+plot(buySignal  ? wt2 - ploff : na, "Buy Signal",  style = plot.style_circles, color = color.green, linewidth = 3)
+
+// --- Bar coloring on signals ---
+barcolor(i_barColor and buySignal  ? color.green : na)
+barcolor(i_barColor and sellSignal ? color.red   : na)
+
+// ============================================================================
+// SECTION 6: FRACTAL DETECTION (configurable lookback)
+// ============================================================================
+
+f_isFractalHigh(src, len) =>
+    center = src[len]
+    isHigh = true
+    for i = 0 to 2 * len
+        if i != len and src[i] >= center
+            isHigh := false
+    isHigh
+
+f_isFractalLow(src, len) =>
+    center = src[len]
+    isLow = true
+    for i = 0 to 2 * len
+        if i != len and src[i] <= center
+            isLow := false
+    isLow
+
+fracHigh = f_isFractalHigh(wt1, i_fractalLen)
+fracLow  = f_isFractalLow(wt1, i_fractalLen)
+
+// ============================================================================
+// SECTION 7: VOLUME FILTER
+// ============================================================================
+
+volSma      = ta.sma(volume, i_volLen)
+volAboveAvg = volume > volSma
+volPass     = not i_useVolFilter or volAboveAvg
+
+// ============================================================================
+// SECTION 8: DIVERGENCE STRENGTH SCORING
+// ============================================================================
+
+f_divScore(wtVal, isBull) =>
+    score = 1
+    inZone    = isBull ? wtVal < i_os : wtVal > i_ob
+    inExtreme = isBull ? wtVal < i_osExtreme : wtVal > i_obExtreme
+    if inZone
+        score := 2
+    if inExtreme
+        score := 3
+    score
+
+// ============================================================================
+// SECTION 9: DIVERGENCE DETECTION — REGULAR + HIDDEN, MULTI-PIVOT
+//            (fixed valuewhen indices: 1,2,3 to avoid off-by-one)
+// ============================================================================
+
+// Previous fractal values (1st prev, 2nd prev, 3rd prev)
+fracHighWT_0  = ta.valuewhen(fracHigh, wt1[i_fractalLen], 1)
+fracHighWT_1  = ta.valuewhen(fracHigh, wt1[i_fractalLen], 2)
+fracHighWT_2  = ta.valuewhen(fracHigh, wt1[i_fractalLen], 3)
+
+fracHighPr_0  = ta.valuewhen(fracHigh, high[i_fractalLen], 1)
+fracHighPr_1  = ta.valuewhen(fracHigh, high[i_fractalLen], 2)
+fracHighPr_2  = ta.valuewhen(fracHigh, high[i_fractalLen], 3)
+
+fracHighBar_0 = ta.valuewhen(fracHigh, bar_index[i_fractalLen], 1)
+fracHighBar_1 = ta.valuewhen(fracHigh, bar_index[i_fractalLen], 2)
+fracHighBar_2 = ta.valuewhen(fracHigh, bar_index[i_fractalLen], 3)
+
+fracLowWT_0   = ta.valuewhen(fracLow, wt1[i_fractalLen], 1)
+fracLowWT_1   = ta.valuewhen(fracLow, wt1[i_fractalLen], 2)
+fracLowWT_2   = ta.valuewhen(fracLow, wt1[i_fractalLen], 3)
+
+fracLowPr_0   = ta.valuewhen(fracLow, low[i_fractalLen], 1)
+fracLowPr_1   = ta.valuewhen(fracLow, low[i_fractalLen], 2)
+fracLowPr_2   = ta.valuewhen(fracLow, low[i_fractalLen], 3)
+
+fracLowBar_0  = ta.valuewhen(fracLow, bar_index[i_fractalLen], 1)
+fracLowBar_1  = ta.valuewhen(fracLow, bar_index[i_fractalLen], 2)
+fracLowBar_2  = ta.valuewhen(fracLow, bar_index[i_fractalLen], 3)
+
+// --- Regular Bearish: price makes higher high, WT makes lower high ---
+f_regBear(prCurr, prPrev, wtCurr, wtPrev) =>
+    prCurr > prPrev and wtCurr < wtPrev
+
+// --- Regular Bullish: price makes lower low, WT makes higher low ---
+f_regBull(prCurr, prPrev, wtCurr, wtPrev) =>
+    prCurr < prPrev and wtCurr > wtPrev
+
+// --- Hidden Bearish: price makes lower high, WT makes higher high ---
+f_hidBear(prCurr, prPrev, wtCurr, wtPrev) =>
+    prCurr < prPrev and wtCurr > wtPrev
+
+// --- Hidden Bullish: price makes higher low, WT makes lower low ---
+f_hidBull(prCurr, prPrev, wtCurr, wtPrev) =>
+    prCurr > prPrev and wtCurr < wtPrev
+
+// Current fractal values (center bar)
+curHighWT = wt1[i_fractalLen]
+curHighPr = high[i_fractalLen]
+curLowWT  = wt1[i_fractalLen]
+curLowPr  = low[i_fractalLen]
+curBar    = bar_index[i_fractalLen]
+
+// --- Check divergences against pivot 0 (immediate previous) ---
+regBearDiv0 = fracHigh and f_regBear(curHighPr, fracHighPr_0, curHighWT, fracHighWT_0)
+regBullDiv0 = fracLow  and f_regBull(curLowPr,  fracLowPr_0,  curLowWT,  fracLowWT_0)
+hidBearDiv0 = fracHigh and f_hidBear(curHighPr, fracHighPr_0, curHighWT, fracHighWT_0)
+hidBullDiv0 = fracLow  and f_hidBull(curLowPr,  fracLowPr_0,  curLowWT,  fracLowWT_0)
+
+// --- Check divergences against pivot 1 (2nd previous) ---
+regBearDiv1 = i_multiPivot and fracHigh and f_regBear(curHighPr, fracHighPr_1, curHighWT, fracHighWT_1)
+regBullDiv1 = i_multiPivot and fracLow  and f_regBull(curLowPr,  fracLowPr_1,  curLowWT,  fracLowWT_1)
+hidBearDiv1 = i_multiPivot and fracHigh and f_hidBear(curHighPr, fracHighPr_1, curHighWT, fracHighWT_1)
+hidBullDiv1 = i_multiPivot and fracLow  and f_hidBull(curLowPr,  fracLowPr_1,  curLowWT,  fracLowWT_1)
+
+// --- Check divergences against pivot 2 (3rd previous) ---
+regBearDiv2 = i_multiPivot and fracHigh and f_regBear(curHighPr, fracHighPr_2, curHighWT, fracHighWT_2)
+regBullDiv2 = i_multiPivot and fracLow  and f_regBull(curLowPr,  fracLowPr_2,  curLowWT,  fracLowWT_2)
+hidBearDiv2 = i_multiPivot and fracHigh and f_hidBear(curHighPr, fracHighPr_2, curHighWT, fracHighWT_2)
+hidBullDiv2 = i_multiPivot and fracLow  and f_hidBull(curLowPr,  fracLowPr_2,  curLowWT,  fracLowWT_2)
+
+// --- Combined flags (any pivot match triggers) ---
+regBearDiv = regBearDiv0 or regBearDiv1 or regBearDiv2
+regBullDiv = regBullDiv0 or regBullDiv1 or regBullDiv2
+hidBearDiv = (hidBearDiv0 or hidBearDiv1 or hidBearDiv2) and not regBearDiv
+hidBullDiv = (hidBullDiv0 or hidBullDiv1 or hidBullDiv2) and not regBullDiv
+
+// Apply volume filter
+regBearDiv := regBearDiv and volPass
+regBullDiv := regBullDiv and volPass
+hidBearDiv := hidBearDiv and volPass
+hidBullDiv := hidBullDiv and volPass
+
+// ============================================================================
+// SECTION 10: DIVERGENCE LINES + LABELS (with na guard + label cap)
+// ============================================================================
+
+var array<label> divLabels = array.new<label>()
+
+f_capLabels(arr, maxSize) =>
+    while array.size(arr) > maxSize
+        label.delete(array.shift(arr))
+
+if i_showDiv and regBearDiv
+    prevBar = regBearDiv0 ? fracHighBar_0 : regBearDiv1 ? fracHighBar_1 : fracHighBar_2
+    prevWT  = regBearDiv0 ? fracHighWT_0  : regBearDiv1 ? fracHighWT_1  : fracHighWT_2
+    score   = f_divScore(curHighWT, false)
+    if i_showLines and not na(prevBar)
+        line.new(prevBar, prevWT, curBar, curHighWT,
+                 color = i_bearColor, width = 2, style = line.style_solid)
+    lbl = label.new(curBar, curHighWT, "BEAR R" + str.tostring(score),
+              color = i_bearColor, textcolor = color.white, size = size.tiny,
+              style = label.style_label_down)
+    array.push(divLabels, lbl)
+    f_capLabels(divLabels, 100)
+
+if i_showDiv and regBullDiv
+    prevBar = regBullDiv0 ? fracLowBar_0 : regBullDiv1 ? fracLowBar_1 : fracLowBar_2
+    prevWT  = regBullDiv0 ? fracLowWT_0  : regBullDiv1 ? fracLowWT_1  : fracLowWT_2
+    score   = f_divScore(curLowWT, true)
+    if i_showLines and not na(prevBar)
+        line.new(prevBar, prevWT, curBar, curLowWT,
+                 color = i_bullColor, width = 2, style = line.style_solid)
+    lbl = label.new(curBar, curLowWT, "BULL R" + str.tostring(score),
+              color = i_bullColor, textcolor = color.white, size = size.tiny,
+              style = label.style_label_up)
+    array.push(divLabels, lbl)
+    f_capLabels(divLabels, 100)
+
+if i_showDiv and hidBearDiv
+    prevBar = hidBearDiv0 ? fracHighBar_0 : hidBearDiv1 ? fracHighBar_1 : fracHighBar_2
+    prevWT  = hidBearDiv0 ? fracHighWT_0  : hidBearDiv1 ? fracHighWT_1  : fracHighWT_2
+    score   = f_divScore(curHighWT, false)
+    if i_showLines and not na(prevBar)
+        line.new(prevBar, prevWT, curBar, curHighWT,
+                 color = i_bearColor, width = 1, style = line.style_dashed)
+    lbl = label.new(curBar, curHighWT, "BEAR H" + str.tostring(score),
+              color = color.new(i_bearColor, 40), textcolor = color.white, size = size.tiny,
+              style = label.style_label_down)
+    array.push(divLabels, lbl)
+    f_capLabels(divLabels, 100)
+
+if i_showDiv and hidBullDiv
+    prevBar = hidBullDiv0 ? fracLowBar_0 : hidBullDiv1 ? fracLowBar_1 : fracLowBar_2
+    prevWT  = hidBullDiv0 ? fracLowWT_0  : hidBullDiv1 ? fracLowWT_1  : fracLowWT_2
+    score   = f_divScore(curLowWT, true)
+    if i_showLines and not na(prevBar)
+        line.new(prevBar, prevWT, curBar, curLowWT,
+                 color = i_bullColor, width = 1, style = line.style_dashed)
+    lbl = label.new(curBar, curLowWT, "BULL H" + str.tostring(score),
+              color = color.new(i_bullColor, 40), textcolor = color.white, size = size.tiny,
+              style = label.style_label_up)
+    array.push(divLabels, lbl)
+    f_capLabels(divLabels, 100)
+
+// ============================================================================
+// SECTION 11: ALERTS (signals + divergences)
+// ============================================================================
+
+// --- Signal alerts ---
+alertcondition(buySignal,  "WT Buy Signal",  "WaveTrend buy signal")
+alertcondition(sellSignal, "WT Sell Signal",  "WaveTrend sell signal")
+
+// --- Cross alerts ---
+alertcondition(ta.crossover(wt1, wt2),  "WT Bullish Cross",  "WaveTrend bullish cross")
+alertcondition(ta.crossunder(wt1, wt2), "WT Bearish Cross",  "WaveTrend bearish cross")
+
+// --- OB/OS alerts ---
+alertcondition(ta.crossover(wt1, i_ob),        "WT Entered OB",        "WT1 entered overbought zone")
+alertcondition(ta.crossunder(wt1, i_os),        "WT Entered OS",        "WT1 entered oversold zone")
+alertcondition(ta.crossover(wt1, i_obExtreme),  "WT Entered Extreme OB", "WT1 entered extreme overbought")
+alertcondition(ta.crossunder(wt1, i_osExtreme), "WT Entered Extreme OS", "WT1 entered extreme oversold")
+
+// --- Divergence alerts ---
+alertcondition(regBullDiv, "Regular Bullish Divergence", "WaveTrend regular bullish divergence detected")
+alertcondition(regBearDiv, "Regular Bearish Divergence", "WaveTrend regular bearish divergence detected")
+alertcondition(hidBullDiv, "Hidden Bullish Divergence",  "WaveTrend hidden bullish divergence detected")
+alertcondition(hidBearDiv, "Hidden Bearish Divergence",  "WaveTrend hidden bearish divergence detected")
+
+// --- Any divergence (catch-all) ---
+alertcondition(regBullDiv or regBearDiv or hidBullDiv or hidBearDiv,
+               "Any Divergence", "WaveTrend divergence detected")
+// ============================================================================
+// END
+// ============================================================================
