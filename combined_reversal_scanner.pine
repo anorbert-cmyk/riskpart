@@ -390,10 +390,7 @@ plotshape(wtBearDivFilt ? wt1[i_wtFracLB] : na, "WT Bear Div",
           color=i_colBear, size=size.tiny, offset=-i_wtFracLB)
 
 // --- Price chart labels via force_overlay ---
-string lblSizeVal = size.small
-
-// We resolve label size once — use the function defined earlier
-lblSizeVal := f_labelSize(i_lblSize)
+string lblSizeVal = f_labelSize(i_lblSize)
 
 // Tier 1 labels (single divergence)
 if i_showT1 and tier1Bull and not tier2Bull and not tier3Bull
