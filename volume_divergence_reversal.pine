@@ -1,0 +1,185 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+// © RiskPart
+
+//@version=6
+indicator("Volume Divergence Reversal Signals", shorttitle = "VDRS",
+     overlay = false, max_lines_count = 500, max_labels_count = 500)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 1: Inputs
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Volume
+i_normLen   = input.int(1000, "Normalization Length", minval = 10, group = "Volume")
+i_showCols  = input.bool(true, "Show Volume Columns", group = "Volume")
+
+// Divergence
+i_lbL       = input.int(5, "Pivot Lookback Left", minval = 1, group = "Divergence")
+i_lbR       = input.int(5, "Pivot Lookback Right", minval = 1, group = "Divergence")
+i_maxBars   = input.int(50, "Max Bars Between Pivots", minval = 5, group = "Divergence")
+i_showLines = input.bool(true, "Show Divergence Lines", group = "Divergence")
+
+// Delta
+i_deltaLTF    = input.timeframe("1", "Lower Timeframe", group = "Delta")
+i_deltaMethod = input.string("Lower TF", "Delta Method",
+     options = ["Lower TF", "Close Position"], group = "Delta")
+
+// Signals
+i_showLabels    = input.bool(true, "Show Signal Labels", group = "Signals")
+i_deltaConfirm  = input.bool(true, "Require Delta Confirmation", group = "Signals")
+i_bullColor     = input.color(color.lime, "Bullish Color", group = "Signals")
+i_bearColor     = input.color(color.red, "Bearish Color", group = "Signals")
+
+// Visual
+i_coldColor = input.color(#2D1B69, "Cold Color (low vol)", group = "Visual")
+i_hotColor  = input.color(#FFD700, "Hot Color (high vol)", group = "Visual")
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 2: Number Formatting Helper (must be defined BEFORE request.security_lower_tf)
+// ──────────────────────────────────────────────────────────────────────────────
+
+f_fmtNum(float val, bool showSign) =>
+    float absVal = math.abs(val)
+    string sign = showSign ? (val > 0 ? "+" : val < 0 ? "-" : "") : ""
+    string str_ = absVal >= 1000000 ? str.tostring(absVal / 1000000, "#.##") + "M" :
+                  absVal >= 1000    ? str.tostring(absVal / 1000, "#.#") + "K" :
+                  str.tostring(absVal, "#")
+    sign + str_
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 3: Normalized Volume
+// ──────────────────────────────────────────────────────────────────────────────
+
+normVol  = ta.percentrank(volume, i_normLen)
+volColor = color.from_gradient(normVol, 0, 100, i_coldColor, i_hotColor)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 4: Volume Delta
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Lower-timeframe data requests must be at global scope
+ltfClose  = request.security_lower_tf(syminfo.tickerid, i_deltaLTF, close)
+ltfOpen   = request.security_lower_tf(syminfo.tickerid, i_deltaLTF, open)
+ltfVolume = request.security_lower_tf(syminfo.tickerid, i_deltaLTF, volume)
+
+// Compute delta from lower-timeframe intrabars
+float ltfDelta = 0.0
+if array.size(ltfClose) > 0
+    for i = 0 to array.size(ltfClose) - 1
+        float c = array.get(ltfClose, i)
+        float o = array.get(ltfOpen, i)
+        float v = array.get(ltfVolume, i)
+        ltfDelta += (c >= o) ? v : -v
+
+// Close-position fallback
+range_  = high - low
+buyVol  = range_ != 0 ? volume * (close - low) / range_ : volume * 0.5
+sellVol = volume - buyVol
+float cpDelta = buyVol - sellVol
+
+// Select method
+float delta = switch i_deltaMethod
+    "Lower TF"       => ltfDelta
+    "Close Position"  => cpDelta
+    => cpDelta
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 5: Pivot Detection (renumbered after reorder)
+// ──────────────────────────────────────────────────────────────────────────────
+
+pricePH      = ta.pivothigh(high, i_lbL, i_lbR)
+pricePL      = ta.pivotlow(low, i_lbL, i_lbR)
+pivotNormVol = normVol[i_lbR]
+int pivotBar = bar_index - i_lbR
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 6: Divergence Detection
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Tracking vars for previous pivots
+var float prevPriceHigh     = na
+var float prevNormVolAtHigh = na
+var int   prevHighBar       = na
+var float prevPriceLow      = na
+var float prevNormVolAtLow  = na
+var int   prevLowBar        = na
+
+// Divergence flags for this bar
+bool bullDiv = false
+bool bearDiv = false
+
+// --- Bearish divergence: price makes higher high, volume makes lower high ---
+if not na(pricePH)
+    if not na(prevPriceHigh) and pricePH > prevPriceHigh and pivotNormVol < prevNormVolAtHigh and (pivotBar - prevHighBar) <= i_maxBars
+        bearDiv := true
+        if i_showLines
+            line.new(prevHighBar, prevNormVolAtHigh, pivotBar, pivotNormVol,
+                 color = i_bearColor, width = 2, style = line.style_dashed)
+    // Update tracking — always store the latest pivot high
+    prevPriceHigh     := pricePH
+    prevNormVolAtHigh := pivotNormVol
+    prevHighBar       := pivotBar
+
+// --- Bullish divergence: price makes lower low, volume makes higher low ---
+if not na(pricePL)
+    if not na(prevPriceLow) and pricePL < prevPriceLow and pivotNormVol > prevNormVolAtLow and (pivotBar - prevLowBar) <= i_maxBars
+        bullDiv := true
+        if i_showLines
+            line.new(prevLowBar, prevNormVolAtLow, pivotBar, pivotNormVol,
+                 color = i_bullColor, width = 2, style = line.style_dashed)
+    // Update tracking — always store the latest pivot low
+    prevPriceLow     := pricePL
+    prevNormVolAtLow := pivotNormVol
+    prevLowBar       := pivotBar
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 7: Signal Labels
+// ──────────────────────────────────────────────────────────────────────────────
+
+float pivotDelta = delta[i_lbR]
+float pivotVol   = volume[i_lbR]
+
+// Delta confirmation logic
+bool deltaOK = not i_deltaConfirm or (bullDiv and pivotDelta > 0) or (bearDiv and pivotDelta < 0)
+
+// Label management array (cap at 100)
+var array<label> lblArr = array.new<label>()
+
+if (bullDiv or bearDiv) and deltaOK and i_showLabels
+    string icon = bullDiv ? "▲" : "▼"
+    string txt  = icon + " Vol: " + f_fmtNum(pivotVol, false) + " | \u0394: " + f_fmtNum(pivotDelta, true)
+    color  lc   = bullDiv ? i_bullColor : i_bearColor
+    label lbl = label.new(pivotBar, pivotNormVol, txt,
+         color = lc, textcolor = color.white, size = size.small,
+         style = bullDiv ? label.style_label_up : label.style_label_down)
+    array.push(lblArr, lbl)
+    // Cap at 100 labels
+    if array.size(lblArr) > 100
+        label.delete(array.shift(lblArr))
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 8: Plotting
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Normalized volume columns with gradient color
+plot(i_showCols ? normVol : na, "Norm Volume", color = volColor, style = plot.style_columns)
+
+// Reference levels (hline requires literal constants)
+hline(80, "High Volume", color = color.new(color.orange, 60), linestyle = hline.style_dotted)
+hline(50, "Mid Volume",  color = color.new(color.gray, 70),   linestyle = hline.style_dotted)
+hline(20, "Low Volume",  color = color.new(color.teal, 60),   linestyle = hline.style_dotted)
+
+// Background highlight on divergence signals
+bgcolor(bullDiv and deltaOK ? color.new(i_bullColor, 90) : na, title = "Bull Div BG")
+bgcolor(bearDiv and deltaOK ? color.new(i_bearColor, 90) : na, title = "Bear Div BG")
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 9: Alerts
+// ──────────────────────────────────────────────────────────────────────────────
+
+alertcondition(bullDiv,                "Bullish Divergence",           "VDRS: Bullish volume divergence detected")
+alertcondition(bearDiv,                "Bearish Divergence",           "VDRS: Bearish volume divergence detected")
+alertcondition(bullDiv and deltaOK,    "Delta-Confirmed Bullish",      "VDRS: Delta-confirmed bullish divergence")
+alertcondition(bearDiv and deltaOK,    "Delta-Confirmed Bearish",      "VDRS: Delta-confirmed bearish divergence")
+alertcondition((bullDiv or bearDiv) and deltaOK, "Any Signal",         "VDRS: Volume divergence signal detected")
