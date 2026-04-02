@@ -1,0 +1,452 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+// Combined Reversal Scanner — WaveTrend + Volume Divergence Confluence
+// Merges fractal-based WT divergence with pivot-based volume divergence
+// and scores signals into three conviction tiers.
+
+//@version=6
+indicator("Combined Reversal Scanner", shorttitle="CRS", overlay=false,
+         max_lines_count=500, max_labels_count=500)
+
+// ─────────────────────────────────────────────────────────────────────
+// SECTION 1: INPUTS
+// ─────────────────────────────────────────────────────────────────────
+
+// — WaveTrend —
+string g_wt = "WaveTrend"
+int   i_wtChannel  = input.int(10,  "Channel Length",   minval=1, group=g_wt)
+int   i_wtAvg      = input.int(21,  "Average Length",   minval=1, group=g_wt)
+int   i_wtSmooth   = input.int(4,   "Smoothing",        minval=1, group=g_wt)
+
+// — Levels —
+string g_lv = "Levels"
+int   i_ob1 = input.int(53,  "Overbought 1",  group=g_lv)
+int   i_os1 = input.int(-53, "Oversold 1",    group=g_lv)
+int   i_ob2 = input.int(73,  "Overbought 2 (Extreme)", group=g_lv)
+int   i_os2 = input.int(-73, "Oversold 2 (Extreme)",   group=g_lv)
+
+// — Volume —
+string g_vol = "Volume"
+int   i_normLen     = input.int(1000, "Norm Percentrank Length", minval=10, group=g_vol)
+float i_highVolPct  = input.float(85, "High Volume Percentile", minval=50, maxval=100, group=g_vol)
+
+// — Divergence —
+string g_div = "Divergence"
+int   i_wtFracLB    = input.int(2, "WT Fractal Lookback",       minval=1, maxval=5,  group=g_div)
+int   i_volPivLB    = input.int(5, "Volume Pivot Left Bars",    minval=1, maxval=20, group=g_div)
+int   i_volPivRB    = input.int(5, "Volume Pivot Right Bars",   minval=1, maxval=20, group=g_div)
+int   i_maxPivBars  = input.int(100, "Max Bars Between Vol Pivots", minval=10, maxval=500, group=g_div)
+bool  i_useVolFilt  = input.bool(true, "Volume Filter on WT Divs", group=g_div)
+bool  i_useDeltaFilt = input.bool(true, "Delta Confirmation",     group=g_div)
+
+// — Combined Signal —
+string g_comb = "Combined Signal"
+int   i_confWindow = input.int(5, "Confluence Window (bars)", minval=1, maxval=20, group=g_comb)
+bool  i_showT1     = input.bool(true,  "Show Tier 1 (Single Div)", group=g_comb)
+bool  i_showT2     = input.bool(true,  "Show Tier 2 (Combined)",   group=g_comb)
+bool  i_showT3     = input.bool(true,  "Show Tier 3 (High Conviction)", group=g_comb)
+
+// — Visual —
+string g_vis = "Visual"
+color i_colBull     = input.color(#00e676, "Bull Color",     group=g_vis)
+color i_colBear     = input.color(#ff5252, "Bear Color",     group=g_vis)
+color i_colWt1      = input.color(#26c6da, "WT1 Line",      group=g_vis)
+color i_colWt2      = input.color(#42a5f5, "WT2 Line",      group=g_vis)
+color i_colHist     = input.color(#ab47bc, "Histogram",      group=g_vis)
+string i_lblSize    = input.string("small", "Label Size",
+                       options=["tiny","small","normal","large","huge"], group=g_vis)
+
+// ─────────────────────────────────────────────────────────────────────
+// SECTION 2: WAVETREND CALCULATION
+// ─────────────────────────────────────────────────────────────────────
+
+float hlc3Src = hlc3
+float esa     = ta.ema(hlc3Src, i_wtChannel)
+float d       = ta.ema(math.abs(hlc3Src - esa), i_wtChannel)
+float ci      = d != 0 ? (hlc3Src - esa) / (0.015 * d) : 0.0
+float wt1     = ta.ema(ci, i_wtAvg)
+float wt2     = ta.sma(wt1, i_wtSmooth)
+float wtDiff  = wt1 - wt2
+
+// Direction
+bool wtRising  = wt1 > wt1[1]
+bool wtFalling = wt1 < wt1[1]
+
+// Cross signals
+bool wtBuySignal  = ta.crossover(wt1, wt2)
+bool wtSellSignal = ta.crossunder(wt1, wt2)
+
+// Extreme zone flags
+bool wtOB1 = wt1 > i_ob1
+bool wtOS1 = wt1 < i_os1
+bool wtOB2 = wt1 > i_ob2
+bool wtOS2 = wt1 < i_os2
+
+// ─────────────────────────────────────────────────────────────────────
+// SECTION 3: NORMALIZED VOLUME + DELTA
+// ─────────────────────────────────────────────────────────────────────
+
+float normVol  = ta.percentrank(volume, i_normLen)
+bool  highVol  = normVol >= i_highVolPct
+
+// Delta approximation via close-position in bar range
+float barRange  = high - low
+float deltaRaw  = barRange != 0 ? ((close - low) - (high - close)) / barRange * volume : 0.0
+float deltaNorm = ta.percentrank(deltaRaw, i_normLen)
+
+// Confirming delta: positive delta on bull signal, negative on bear
+bool deltaBullOK = deltaNorm > 50
+bool deltaBearOK = deltaNorm < 50
+
+// ─────────────────────────────────────────────────────────────────────
+// SECTION 4: WT DIVERGENCE DETECTION (Fractal-based)
+// ─────────────────────────────────────────────────────────────────────
+
+// --- Fractal detection functions ---
+f_isFractalHigh(_src, _lb) =>
+    bool result = true
+    for i = 1 to _lb
+        if _src[_lb] <= _src[_lb + i] or _src[_lb] <= _src[_lb - i]
+            result := false
+    result
+
+f_isFractalLow(_src, _lb) =>
+    bool result = true
+    for i = 1 to _lb
+        if _src[_lb] >= _src[_lb + i] or _src[_lb] >= _src[_lb - i]
+            result := false
+    result
+
+// --- Label size helper ---
+f_labelSize(_s) =>
+    switch _s
+        "tiny"   => size.tiny
+        "small"  => size.small
+        "normal" => size.normal
+        "large"  => size.large
+        "huge"   => size.huge
+        => size.small
+
+// Fractal flags (offset by lookback)
+bool wtFracH = f_isFractalHigh(wt1, i_wtFracLB)
+bool wtFracL = f_isFractalLow(wt1, i_wtFracLB)
+
+// Previous fractal high values — occurrence max = 2
+float wtFH1     = ta.valuewhen(wtFracH, wt1[i_wtFracLB], 0)
+float wtFH2     = ta.valuewhen(wtFracH, wt1[i_wtFracLB], 1)
+int   wtFHBar1  = ta.valuewhen(wtFracH, bar_index[i_wtFracLB], 0)
+int   wtFHBar2  = ta.valuewhen(wtFracH, bar_index[i_wtFracLB], 1)
+
+float wtPrH1    = ta.valuewhen(wtFracH, high[i_wtFracLB], 0)
+float wtPrH2    = ta.valuewhen(wtFracH, high[i_wtFracLB], 1)
+
+// Previous fractal low values
+float wtFL1     = ta.valuewhen(wtFracL, wt1[i_wtFracLB], 0)
+float wtFL2     = ta.valuewhen(wtFracL, wt1[i_wtFracLB], 1)
+int   wtFLBar1  = ta.valuewhen(wtFracL, bar_index[i_wtFracLB], 0)
+int   wtFLBar2  = ta.valuewhen(wtFracL, bar_index[i_wtFracLB], 1)
+
+float wtPrL1    = ta.valuewhen(wtFracL, low[i_wtFracLB], 0)
+float wtPrL2    = ta.valuewhen(wtFracL, low[i_wtFracLB], 1)
+
+// Regular bearish: price higher high, WT lower high
+bool wtBearRegDiv = wtFracH and
+                    not na(wtFH2) and
+                    wtPrH1 > wtPrH2 and
+                    wtFH1 < wtFH2
+
+// Regular bullish: price lower low, WT higher low
+bool wtBullRegDiv = wtFracL and
+                    not na(wtFL2) and
+                    wtPrL1 < wtPrL2 and
+                    wtFL1 > wtFL2
+
+// Hidden bearish: price lower high, WT higher high
+bool wtBearHidDiv = wtFracH and
+                    not na(wtFH2) and
+                    wtPrH1 < wtPrH2 and
+                    wtFH1 > wtFH2
+
+// Hidden bullish: price higher low, WT lower low
+bool wtBullHidDiv = wtFracL and
+                    not na(wtFL2) and
+                    wtPrL1 > wtPrL2 and
+                    wtFL1 < wtFL2
+
+// Apply volume filter
+bool wtBullDiv = (wtBullRegDiv or wtBullHidDiv) and (not i_useVolFilt or highVol)
+bool wtBearDiv = (wtBearRegDiv or wtBearHidDiv) and (not i_useVolFilt or highVol)
+
+// Apply delta filter
+bool wtBullDivFilt = wtBullDiv and (not i_useDeltaFilt or deltaBullOK)
+bool wtBearDivFilt = wtBearDiv and (not i_useDeltaFilt or deltaBearOK)
+
+// ─────────────────────────────────────────────────────────────────────
+// SECTION 5: VOLUME DIVERGENCE DETECTION (Pivot-based)
+// ─────────────────────────────────────────────────────────────────────
+
+// Pivots on price
+float pivHigh = ta.pivothigh(high, i_volPivLB, i_volPivRB)
+float pivLow  = ta.pivotlow(low,  i_volPivLB, i_volPivRB)
+
+// Offset for pivot confirmation delay
+int pivotOffset = i_volPivRB
+
+// Normalized volume at the pivot bar (offset back by right bars)
+float normVolAtPiv = normVol[pivotOffset]
+
+// --- Persistent tracking of previous pivot values ---
+var float prevPivHighPrice = na
+var float prevPivHighVol   = na
+var int   prevPivHighBar   = na
+var float currPivHighPrice = na
+var float currPivHighVol   = na
+var int   currPivHighBar   = na
+
+var float prevPivLowPrice  = na
+var float prevPivLowVol    = na
+var int   prevPivLowBar    = na
+var float currPivLowPrice  = na
+var float currPivLowVol    = na
+var int   currPivLowBar    = na
+
+// Update on new pivot high
+if not na(pivHigh)
+    prevPivHighPrice := currPivHighPrice
+    prevPivHighVol   := currPivHighVol
+    prevPivHighBar   := currPivHighBar
+    currPivHighPrice := pivHigh
+    currPivHighVol   := normVolAtPiv
+    currPivHighBar   := bar_index - pivotOffset
+
+// Update on new pivot low
+if not na(pivLow)
+    prevPivLowPrice := currPivLowPrice
+    prevPivLowVol   := currPivLowVol
+    prevPivLowBar   := currPivLowBar
+    currPivLowPrice := pivLow
+    currPivLowVol   := normVolAtPiv
+    currPivLowBar   := bar_index - pivotOffset
+
+// Distance checks
+bool pivHighInRange = not na(prevPivHighBar) and not na(currPivHighBar) and
+                      (currPivHighBar - prevPivHighBar) <= i_maxPivBars
+
+bool pivLowInRange  = not na(prevPivLowBar) and not na(currPivLowBar) and
+                      (currPivLowBar - prevPivLowBar) <= i_maxPivBars
+
+// Volume bearish divergence: price makes higher high, volume (normVol) is lower at new pivot
+bool volBearDiv = not na(pivHigh) and
+                  pivHighInRange and
+                  not na(prevPivHighPrice) and
+                  currPivHighPrice > prevPivHighPrice and
+                  currPivHighVol < prevPivHighVol
+
+// Volume bullish divergence: price makes lower low, volume is HIGHER at new pivot
+// (rising volume on lower lows = capitulation / selling climax — smart money accumulating)
+bool volBullDiv = not na(pivLow) and
+                  pivLowInRange and
+                  not na(prevPivLowPrice) and
+                  currPivLowPrice < prevPivLowPrice and
+                  currPivLowVol > prevPivLowVol
+
+// ─────────────────────────────────────────────────────────────────────
+// SECTION 6: COMBINED SIGNAL LOGIC
+// ─────────────────────────────────────────────────────────────────────
+
+// Track when each divergence last fired
+var int lastWTBullBar  = na
+var int lastWTBearBar  = na
+var int lastVolBullBar = na
+var int lastVolBearBar = na
+
+// Update on each divergence
+if wtBullDivFilt
+    lastWTBullBar := bar_index
+if wtBearDivFilt
+    lastWTBearBar := bar_index
+if volBullDiv
+    lastVolBullBar := bar_index
+if volBearDiv
+    lastVolBearBar := bar_index
+
+// Combined signal: both fired within the confluence window
+// Fires on the bar where the LATER (confirming) divergence appears
+bool combinedBull = not na(lastWTBullBar) and not na(lastVolBullBar) and
+                    math.abs(lastWTBullBar - lastVolBullBar) <= i_confWindow and
+                    (lastWTBullBar == bar_index or lastVolBullBar == bar_index)
+
+bool combinedBear = not na(lastWTBearBar) and not na(lastVolBearBar) and
+                    math.abs(lastWTBearBar - lastVolBearBar) <= i_confWindow and
+                    (lastWTBearBar == bar_index or lastVolBearBar == bar_index)
+
+// ─────────────────────────────────────────────────────────────────────
+// SECTION 7: SIGNAL SCORING
+// ─────────────────────────────────────────────────────────────────────
+
+// Tier 1: single divergence only (WT or Vol alone, no confluence)
+bool tier1Bull = (wtBullDivFilt or volBullDiv) and not combinedBull
+bool tier1Bear = (wtBearDivFilt or volBearDiv) and not combinedBear
+
+// Tier 2: both diverge within window
+bool tier2Bull = combinedBull and not (
+                    (i_useDeltaFilt ? deltaBullOK : true) and
+                    (wtOS1 or wtOS2) and
+                    highVol)
+bool tier2Bear = combinedBear and not (
+                    (i_useDeltaFilt ? deltaBearOK : true) and
+                    (wtOB1 or wtOB2) and
+                    highVol)
+
+// Tier 3: both diverge + delta confirms + WT extreme + high normVol
+bool tier3Bull = combinedBull and
+                 (i_useDeltaFilt ? deltaBullOK : true) and
+                 (wtOS1 or wtOS2) and
+                 highVol
+bool tier3Bear = combinedBear and
+                 (i_useDeltaFilt ? deltaBearOK : true) and
+                 (wtOB1 or wtOB2) and
+                 highVol
+
+// ─────────────────────────────────────────────────────────────────────
+// SECTION 8: PLOTTING
+// ─────────────────────────────────────────────────────────────────────
+
+// --- Oscillator pane ---
+
+// OB/OS reference lines
+hline(0,   "Zero",   color=color.new(color.gray, 70))
+hline(53,  "OB1",    color=color.new(color.red, 70),   linestyle=hline.style_dotted)
+hline(-53, "OS1",    color=color.new(color.green, 70),  linestyle=hline.style_dotted)
+hline(73,  "OB2",    color=color.new(color.red, 50),    linestyle=hline.style_dashed)
+hline(-73, "OS2",    color=color.new(color.green, 50),  linestyle=hline.style_dashed)
+
+// WT lines
+plot(wt1, "WT1", color=i_colWt1, linewidth=2)
+plot(wt2, "WT2", color=i_colWt2, linewidth=1)
+
+// Histogram
+color histCol = wtDiff >= 0 ?
+                (wtDiff > wtDiff[1] ? color.new(i_colBull, 20) : color.new(i_colBull, 60)) :
+                (wtDiff < wtDiff[1] ? color.new(i_colBear, 20) : color.new(i_colBear, 60))
+plot(wtDiff, "Histogram", color=histCol, style=plot.style_columns)
+
+// OB/OS gradient zone fill
+color obFill = wt1 > i_ob2 ? color.new(i_colBear, 50) :
+               wt1 > i_ob1 ? color.new(i_colBear, 75) : na
+color osFill = wt1 < i_os2 ? color.new(i_colBull, 50) :
+               wt1 < i_os1 ? color.new(i_colBull, 75) : na
+
+bgcolor(obFill, title="OB Zone")
+bgcolor(osFill, title="OS Zone")
+
+// Buy/sell crosses on oscillator
+plotshape(wtBuySignal  ? wt2 : na, "WT Cross Up",   style=shape.circle,
+          location=location.absolute, color=i_colBull, size=size.tiny)
+plotshape(wtSellSignal ? wt2 : na, "WT Cross Down",  style=shape.circle,
+          location=location.absolute, color=i_colBear, size=size.tiny)
+
+// WT divergence markers on oscillator
+plotshape(wtBullDivFilt ? wt1[i_wtFracLB] : na, "WT Bull Div",
+          style=shape.diamond, location=location.absolute,
+          color=i_colBull, size=size.tiny, offset=-i_wtFracLB)
+plotshape(wtBearDivFilt ? wt1[i_wtFracLB] : na, "WT Bear Div",
+          style=shape.diamond, location=location.absolute,
+          color=i_colBear, size=size.tiny, offset=-i_wtFracLB)
+
+// --- Price chart labels via force_overlay ---
+string lblSz = i_lblSize
+var lblSizeVal = size.small
+
+// We resolve label size once — use the function defined earlier
+lblSizeVal := f_labelSize(i_lblSize)
+
+// Tier 1 labels (single divergence)
+if i_showT1 and tier1Bull and not tier2Bull and not tier3Bull
+    label.new(bar_index, low, "★ Bull Div",
+              style=label.style_label_up, color=color.new(i_colBull, 40),
+              textcolor=color.white, size=lblSizeVal, force_overlay=true)
+
+if i_showT1 and tier1Bear and not tier2Bear and not tier3Bear
+    label.new(bar_index, high, "★ Bear Div",
+              style=label.style_label_down, color=color.new(i_colBear, 40),
+              textcolor=color.white, size=lblSizeVal, force_overlay=true)
+
+// Tier 2 labels (combined)
+if i_showT2 and tier2Bull
+    label.new(bar_index, low, "★★ COMBINED Bull",
+              style=label.style_label_up, color=i_colBull,
+              textcolor=color.white, size=lblSizeVal, force_overlay=true)
+
+if i_showT2 and tier2Bear
+    label.new(bar_index, high, "★★ COMBINED Bear",
+              style=label.style_label_down, color=i_colBear,
+              textcolor=color.white, size=lblSizeVal, force_overlay=true)
+
+// Tier 3 labels (high conviction)
+if i_showT3 and tier3Bull
+    label.new(bar_index, low, "★★★ COMBINED Bull [EXTREME]",
+              style=label.style_label_up, color=color.new(#00c853, 0),
+              textcolor=color.white, size=lblSizeVal, force_overlay=true)
+
+if i_showT3 and tier3Bear
+    label.new(bar_index, high, "★★★ COMBINED Bear [EXTREME]",
+              style=label.style_label_down, color=color.new(#d50000, 0),
+              textcolor=color.white, size=lblSizeVal, force_overlay=true)
+
+// Volume divergence markers on oscillator (small triangles near zero)
+plotshape(volBullDiv ? -5 : na, "Vol Bull Div",
+          style=shape.triangleup, location=location.absolute,
+          color=color.new(i_colBull, 30), size=size.tiny)
+plotshape(volBearDiv ? 5 : na, "Vol Bear Div",
+          style=shape.triangledown, location=location.absolute,
+          color=color.new(i_colBear, 30), size=size.tiny)
+
+// ─────────────────────────────────────────────────────────────────────
+// SECTION 9: ALERTS
+// ─────────────────────────────────────────────────────────────────────
+
+// WT-only
+alertcondition(wtBullDivFilt and not combinedBull,
+               title="WT Bullish Divergence",
+               message="CRS: WaveTrend bullish divergence detected")
+
+alertcondition(wtBearDivFilt and not combinedBear,
+               title="WT Bearish Divergence",
+               message="CRS: WaveTrend bearish divergence detected")
+
+// Vol-only
+alertcondition(volBullDiv and not combinedBull,
+               title="Vol Bullish Divergence",
+               message="CRS: Volume bullish divergence detected")
+
+alertcondition(volBearDiv and not combinedBear,
+               title="Vol Bearish Divergence",
+               message="CRS: Volume bearish divergence detected")
+
+// Combined (Tier 2+)
+alertcondition(combinedBull,
+               title="Combined Bullish (Tier 2+)",
+               message="CRS: Combined bullish divergence — WT + Volume within confluence window")
+
+alertcondition(combinedBear,
+               title="Combined Bearish (Tier 2+)",
+               message="CRS: Combined bearish divergence — WT + Volume within confluence window")
+
+// High conviction (Tier 3)
+alertcondition(tier3Bull,
+               title="High Conviction Bullish (Tier 3)",
+               message="CRS: HIGH CONVICTION bullish — combined div + delta + extreme + high volume")
+
+alertcondition(tier3Bear,
+               title="High Conviction Bearish (Tier 3)",
+               message="CRS: HIGH CONVICTION bearish — combined div + delta + extreme + high volume")
+
+// Any signal
+alertcondition(tier1Bull or tier1Bear or tier2Bull or tier2Bear or tier3Bull or tier3Bear,
+               title="Any Reversal Signal",
+               message="CRS: Reversal signal detected — check chart for tier")
+
+// ─────────────────────────────────────────────────────────────────────
+// END
+// ─────────────────────────────────────────────────────────────────────
