@@ -258,7 +258,8 @@ f_getLabelSize() =>
 f_buildLabelText(bool isBull, float vol, float dlt, int score, bool veyd, bool surp, bool pt) =>
     string icon = isBull ? i_bullIcon : i_bearIcon
     string stars = score >= 5 ? "★★★★★" : score == 4 ? "★★★★" : score == 3 ? "★★★" : score == 2 ? "★★" : "★"
-    string txt = icon + " " + stars
+    string sigType = score >= 4 ? "REVERSAL" : score == 3 ? "PROBABLE" : "DCA"
+    string txt = icon + " " + stars + " " + sigType
     if veyd
         txt += " [EXH]"
     if surp
