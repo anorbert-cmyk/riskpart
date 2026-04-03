@@ -327,7 +327,7 @@ f_buildLabelText(bool isBull, float vol, float dlt, int score, bool veyd, bool s
     if i_showVol
         txt += " Vol: " + f_fmtNum(vol, false)
     if i_showDelta
-        txt += (i_showVol ? " | " : " ") + "\u0394: " + f_fmtNum(dlt, true)
+        txt += (i_showVol ? " | " : " ") + "D: " + f_fmtNum(dlt, true)
     txt
 
 // --- Cooldown ---
@@ -388,7 +388,8 @@ if not na(pricePL) and pivotNormVol >= i_minNormVol and i_showSupport
             box.delete(supportBoxes.shift())
             supportPrices.shift()
         supportPrices.push(pricePL)
-        supportBoxes.push(box.new(pivotBar, pricePL + zHalf, pivotBar + 50, pricePL - zHalf, bgcolor=color.new(i_bullColor, 90), border_color=color.new(i_bullColor, 70), force_overlay=true))
+        box b = box.new(pivotBar, pricePL + zHalf, pivotBar + 50, pricePL - zHalf, bgcolor=color.new(i_bullColor, 90), border_color=color.new(i_bullColor, 70), force_overlay=true)
+        supportBoxes.push(b)
 
 if i_showSupport and supportBoxes.size() > 0
     for k = 0 to supportBoxes.size() - 1
@@ -431,18 +432,22 @@ plotshape(bearSignal and i_labelStyle == "Shape Cross", title = "Bear Cross", st
 // --- ALERT labels (Tier 0: absorption on close, 0 delay, NON-REPAINT) ---
 var array<label> alertLblArr = array.new<label>()
 if alertBull and i_showLabels
-    alertLblArr.push(label.new(bar_index, low, "ALERT BULL", color=color.new(color.yellow, 20), textcolor=color.black, size=size.tiny, style=label.style_label_up, force_overlay=true))
+    label alertBullLbl = label.new(bar_index, low, "ALERT BULL", color=color.new(color.yellow, 20), textcolor=color.black, size=size.tiny, style=label.style_label_up, force_overlay=true)
+    alertLblArr.push(alertBullLbl)
 if alertBear and i_showLabels
-    alertLblArr.push(label.new(bar_index, high, "ALERT BEAR", color=color.new(color.yellow, 20), textcolor=color.black, size=size.tiny, style=label.style_label_down, force_overlay=true))
+    label alertBearLbl = label.new(bar_index, high, "ALERT BEAR", color=color.new(color.yellow, 20), textcolor=color.black, size=size.tiny, style=label.style_label_down, force_overlay=true)
+    alertLblArr.push(alertBearLbl)
 if alertLblArr.size() > 50
     label.delete(alertLblArr.shift())
 
 // --- EARLY labels (Tier 1: fast pivot, 1 bar delay, NON-REPAINT) ---
 var array<label> earlyLblArr = array.new<label>()
 if earlyBull and i_showLabels
-    earlyLblArr.push(label.new(fastPivotBar, low[1], "EARLY BULL", color=color.new(color.aqua, 20), textcolor=color.white, size=size.tiny, style=label.style_label_up, force_overlay=true))
+    label earlyBullLbl = label.new(fastPivotBar, low[1], "EARLY BULL", color=color.new(color.aqua, 20), textcolor=color.white, size=size.tiny, style=label.style_label_up, force_overlay=true)
+    earlyLblArr.push(earlyBullLbl)
 if earlyBear and i_showLabels
-    earlyLblArr.push(label.new(fastPivotBar, high[1], "EARLY BEAR", color=color.new(color.orange, 20), textcolor=color.white, size=size.tiny, style=label.style_label_down, force_overlay=true))
+    label earlyBearLbl = label.new(fastPivotBar, high[1], "EARLY BEAR", color=color.new(color.orange, 20), textcolor=color.white, size=size.tiny, style=label.style_label_down, force_overlay=true)
+    earlyLblArr.push(earlyBearLbl)
 if earlyLblArr.size() > 50
     label.delete(earlyLblArr.shift())
 
