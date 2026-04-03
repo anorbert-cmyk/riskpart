@@ -22,6 +22,7 @@ i_lbR       = input.int(5, "Pivot Lookback Right", minval = 1, group = "Divergen
 i_maxBars   = input.int(50, "Max Bars Between Pivots", minval = 5, group = "Divergence")
 i_showLines = input.bool(true, "Show Divergence Lines", group = "Divergence")
 i_minNormVol = input.int(70, "Min Norm Volume for Signal", minval = 0, maxval = 100, group = "Divergence")
+i_minPivotDepth = input.float(0.25, "Min Pivot Depth (ATR mult)", minval=0.0, maxval=2.0, step=0.05, group = "Divergence", tooltip = "Minimum price distance between consecutive pivots as ATR multiple. Higher = fewer but more meaningful signals.")
 
 // VEYD
 i_useVEYD    = input.bool(true, "Enable VEYD Exhaustion", group = "VEYD")
@@ -46,6 +47,7 @@ i_deltaMethod = input.string("Lower TF", "Delta Method",
      options = ["Lower TF", "Close Position"], group = "Delta")
 
 // Signals
+i_minScore      = input.int(1, "Min Signal Score (stars)", minval=1, maxval=5, group = "Signals", tooltip = "Minimum star rating to show signal. 1=all, 2=require at least one confirmation, 3+=high conviction only.")
 i_showLabels    = input.bool(true, "Show Signal Labels", group = "Signals")
 i_deltaConfirm  = input.bool(true, "Require Delta Confirmation", group = "Signals")
 i_bullColor     = input.color(color.lime, "Bullish Color", group = "Signals")
@@ -95,6 +97,15 @@ f_fmtNum(float val, bool showSign) =>
 
 normVol  = ta.percentrank(volume, i_normLen)
 volColor = color.from_gradient(normVol, 0, 100, i_coldColor, i_hotColor)
+float atrVal = ta.atr(14)
+
+f_medianNormVol(int center, int halfW) =>
+    int w = 2 * halfW + 1
+    float[] vals = array.new_float(w)
+    for j = 0 to w - 1
+        array.set(vals, j, normVol[center - halfW + j])
+    array.sort(vals, order.ascending)
+    array.get(vals, int(math.floor(w / 2)))
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Section 4: Volume Delta
@@ -164,7 +175,8 @@ bool phaseTransition = i_usePT and barsSinceLH > 0 and barsSinceLH <= 3 and not 
 
 pricePH      = ta.pivothigh(high, i_lbL, i_lbR)
 pricePL      = ta.pivotlow(low, i_lbL, i_lbR)
-pivotNormVol = normVol[i_lbR]
+int clusterHalf = math.max(1, int(math.floor(i_lbR / 2)))
+pivotNormVol = f_medianNormVol(i_lbR, clusterHalf)
 int pivotBar = bar_index - i_lbR
 
 // VEYD decay at pivot
@@ -197,7 +209,7 @@ bool bearDiv = false
 
 // --- Bearish divergence: price makes higher high, volume makes lower high ---
 if not na(pricePH)
-    if not na(prevPriceHigh) and pricePH > prevPriceHigh and pivotNormVol < prevNormVolAtHigh and (pivotBar - prevHighBar) <= i_maxBars and pivotNormVol >= i_minNormVol
+    if not na(prevPriceHigh) and pricePH > prevPriceHigh and pivotNormVol < prevNormVolAtHigh and (pivotBar - prevHighBar) <= i_maxBars and pivotNormVol >= i_minNormVol and (pricePH - prevPriceHigh) > atrVal * i_minPivotDepth
         bearDiv := true
         if i_showLines
             line.new(prevHighBar, prevNormVolAtHigh, pivotBar, pivotNormVol,
@@ -209,7 +221,7 @@ if not na(pricePH)
 
 // --- Bullish divergence: price makes lower low, volume makes higher low ---
 if not na(pricePL)
-    if not na(prevPriceLow) and pricePL < prevPriceLow and pivotNormVol > prevNormVolAtLow and (pivotBar - prevLowBar) <= i_maxBars and pivotNormVol >= i_minNormVol
+    if not na(prevPriceLow) and pricePL < prevPriceLow and pivotNormVol > prevNormVolAtLow and (pivotBar - prevLowBar) <= i_maxBars and pivotNormVol >= i_minNormVol and (prevPriceLow - pricePL) > atrVal * i_minPivotDepth
         bullDiv := true
         if i_showLines
             line.new(prevLowBar, prevNormVolAtLow, pivotBar, pivotNormVol,
@@ -260,8 +272,8 @@ f_buildLabelText(bool isBull, float vol, float dlt, int score, bool veyd, bool s
     txt
 
 // --- Signal booleans ---
-bool bullSignal = bullDiv and deltaOK
-bool bearSignal = bearDiv and deltaOK
+bool bullSignal = bullDiv and deltaOK and bullScore >= i_minScore
+bool bearSignal = bearDiv and deltaOK and bearScore >= i_minScore
 
 // Determine active signal score for bgcolor (global scope)
 int signalScore = bullSignal ? bullScore : bearSignal ? bearScore : 0
