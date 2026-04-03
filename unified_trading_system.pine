@@ -3,8 +3,7 @@
 // © RiskPart
 
 //@version=6
-indicator("Unified Trading System", shorttitle = "UTS",
-     overlay = false, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("Unified Trading System", shorttitle = "UTS", overlay = false, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Section 1: Inputs
@@ -15,10 +14,8 @@ i_normLen   = input.int(200, "Normalization Length", minval = 10, group = "Volum
 i_showCols  = input.bool(true, "Show Volume Columns", group = "Volume")
 
 // Divergence
-i_lbL       = input.int(5, "Pivot Lookback Left", minval = 1, group = "Divergence",
-     tooltip = "Higher values (e.g. 8-10) reduce noise on higher timeframes but delay signals; lower values (e.g. 3-5) are more responsive but noisier")
-i_lbR       = input.int(5, "Pivot Lookback Right", minval = 1, group = "Divergence",
-     tooltip = "Higher values (e.g. 8-10) reduce noise on higher timeframes but delay signals; lower values (e.g. 3-5) are more responsive but noisier")
+i_lbL       = input.int(5, "Pivot Lookback Left", minval = 1, group = "Divergence", tooltip = "Higher values (e.g. 8-10) reduce noise on higher timeframes but delay signals; lower values (e.g. 3-5) are more responsive but noisier")
+i_lbR       = input.int(5, "Pivot Lookback Right", minval = 1, group = "Divergence", tooltip = "Higher values (e.g. 8-10) reduce noise on higher timeframes but delay signals; lower values (e.g. 3-5) are more responsive but noisier")
 i_maxBars   = input.int(50, "Max Bars Between Pivots", minval = 5, group = "Divergence")
 i_showLines = input.bool(true, "Show Divergence Lines", group = "Divergence")
 i_minNormVol = input.int(70, "Min Norm Volume for Signal", minval = 0, maxval = 100, group = "Divergence")
@@ -275,8 +272,7 @@ if not na(pricePH)
     if not na(prevPriceHigh) and pricePH > prevPriceHigh and pivotNormVol < prevNormVolAtHigh and (pivotBar - prevHighBar) <= i_maxBars and pivotNormVol >= i_minNormVol and (pricePH - prevPriceHigh) > atrVal * i_minPivotDepth
         bearDiv := true
         if i_showLines
-            line.new(prevHighBar, prevNormVolAtHigh, pivotBar, pivotNormVol,
-                 color = i_bearColor, width = 2, style = line.style_dashed)
+            line.new(prevHighBar, prevNormVolAtHigh, pivotBar, pivotNormVol, color = i_bearColor, width = 2, style = line.style_dashed)
     // Update tracking — always store the latest pivot high
     prevPriceHigh     := pricePH
     prevNormVolAtHigh := pivotNormVol
@@ -287,8 +283,7 @@ if not na(pricePL)
     if not na(prevPriceLow) and pricePL < prevPriceLow and pivotNormVol > prevNormVolAtLow and (pivotBar - prevLowBar) <= i_maxBars and pivotNormVol >= i_minNormVol and (prevPriceLow - pricePL) > atrVal * i_minPivotDepth
         bullDiv := true
         if i_showLines
-            line.new(prevLowBar, prevNormVolAtLow, pivotBar, pivotNormVol,
-                 color = i_bullColor, width = 2, style = line.style_dashed)
+            line.new(prevLowBar, prevNormVolAtLow, pivotBar, pivotNormVol, color = i_bullColor, width = 2, style = line.style_dashed)
     // Update tracking — always store the latest pivot low
     prevPriceLow     := pricePL
     prevNormVolAtLow := pivotNormVol
@@ -413,17 +408,11 @@ if (bullSignal or bearSignal) and i_showLabels
     float  yPos = bullSignal ? low[i_lbR] : high[i_lbR]
 
     if i_labelStyle == "Label"
-        label lbl = label.new(pivotBar, yPos, txt,
-             color = lc, textcolor = color.white, size = f_getLabelSize(),
-             style = bullSignal ? label.style_label_up : label.style_label_down,
-             force_overlay = true)
+        label lbl = label.new(pivotBar, yPos, txt, color = lc, textcolor = color.white, size = f_getLabelSize(), style = bullSignal ? label.style_label_up : label.style_label_down, force_overlay = true)
         array.push(lblArr, lbl)
     else
         string shapeIcon = bullSignal ? i_bullIcon : i_bearIcon
-        label lbl = label.new(pivotBar, yPos, shapeIcon,
-             color = color.new(lc, 100), textcolor = lc, size = f_getLabelSize(),
-             style = bullSignal ? label.style_label_up : label.style_label_down,
-             force_overlay = true)
+        label lbl = label.new(pivotBar, yPos, shapeIcon, color = color.new(lc, 100), textcolor = lc, size = f_getLabelSize(), style = bullSignal ? label.style_label_up : label.style_label_down, force_overlay = true)
         array.push(lblArr, lbl)
 
     // Cap at 100 labels
@@ -431,24 +420,12 @@ if (bullSignal or bearSignal) and i_showLabels
         label.delete(array.shift(lblArr))
 
 // --- Plotshape signals on the PRICE CHART (force_overlay = true) ---
-plotshape(bullSignal and i_labelStyle == "Shape Arrow", title = "Bull Arrow",
-     style = shape.triangleup, location = location.belowbar,
-     color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
-plotshape(bearSignal and i_labelStyle == "Shape Arrow", title = "Bear Arrow",
-     style = shape.triangledown, location = location.abovebar,
-     color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
-plotshape(bullSignal and i_labelStyle == "Shape Diamond", title = "Bull Diamond",
-     style = shape.diamond, location = location.belowbar,
-     color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
-plotshape(bearSignal and i_labelStyle == "Shape Diamond", title = "Bear Diamond",
-     style = shape.diamond, location = location.abovebar,
-     color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
-plotshape(bullSignal and i_labelStyle == "Shape Cross", title = "Bull Cross",
-     style = shape.cross, location = location.belowbar,
-     color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
-plotshape(bearSignal and i_labelStyle == "Shape Cross", title = "Bear Cross",
-     style = shape.cross, location = location.abovebar,
-     color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bullSignal and i_labelStyle == "Shape Arrow", title = "Bull Arrow", style = shape.triangleup, location = location.belowbar, color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bearSignal and i_labelStyle == "Shape Arrow", title = "Bear Arrow", style = shape.triangledown, location = location.abovebar, color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bullSignal and i_labelStyle == "Shape Diamond", title = "Bull Diamond", style = shape.diamond, location = location.belowbar, color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bearSignal and i_labelStyle == "Shape Diamond", title = "Bear Diamond", style = shape.diamond, location = location.abovebar, color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bullSignal and i_labelStyle == "Shape Cross", title = "Bull Cross", style = shape.cross, location = location.belowbar, color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bearSignal and i_labelStyle == "Shape Cross", title = "Bear Cross", style = shape.cross, location = location.abovebar, color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // --- ALERT labels (Tier 0: absorption on close, 0 delay, NON-REPAINT) ---
