@@ -106,9 +106,7 @@ f_signalScore(float nVol, float dlt, bool isBull, bool veyd, bool surp, bool pt)
 f_fmtNum(float val, bool showSign) =>
     float absVal = math.abs(val)
     string sign = showSign ? (val > 0 ? "+" : val < 0 ? "-" : "") : ""
-    string str_ = absVal >= 1000000 ? str.tostring(absVal / 1000000, "#.##") + "M" :
-                  absVal >= 1000    ? str.tostring(absVal / 1000, "#.#") + "K" :
-                  str.tostring(absVal, "#")
+    string str_ = absVal >= 1000000 ? str.tostring(absVal / 1000000, "#.##") + "M" : absVal >= 1000 ? str.tostring(absVal / 1000, "#.#") + "K" : str.tostring(absVal, "#")
     sign + str_
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -217,7 +215,7 @@ int pivotBar = bar_index - i_lbR
 // VEYD decay at pivot
 float veydFirst = eyNorm[i_lbR + i_veydLen - 1]
 float veydLast = eyNorm[i_lbR]
-bool veydExhaustion = i_useVEYD and not na(veydFirst) and not na(veydLast) and veydLast > 0 and veydFirst / veydLast > (1.0 / i_veydThresh)
+bool veydExhaustion = i_useVEYD and not na(veydFirst) and not na(veydLast) and (veydLast <= 0 ? veydFirst > 0 : veydFirst / veydLast > (1.0 / i_veydThresh))
 
 // Surprisal at pivot
 float pivotSurprisal = surprisal[i_lbR]
@@ -379,7 +377,7 @@ int signalScore = bullSignal ? bullScoreAdj : bearSignal ? bearScoreAdj : 0
 var array<label> lblArr = array.new<label>()
 
 if (bullSignal or bearSignal) and i_showLabels
-    int activeScore = bullSignal ? bullScore : bearScore
+    int activeScore = bullSignal ? bullScoreAdj : bearScoreAdj
     string txt = f_buildLabelText(bullSignal, pivotVol, pivotDelta, activeScore, veydExhaustion, pivotHighSurp, pivotPT) + rrText + trendWarn
     color  lc  = bullSignal ? i_bullColor : i_bearColor
     float  yPos = bullSignal ? low[i_lbR] : high[i_lbR]
