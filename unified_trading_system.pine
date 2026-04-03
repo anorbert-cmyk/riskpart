@@ -1,0 +1,494 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+// © RiskPart
+
+//@version=6
+indicator("Unified Trading System", shorttitle = "UTS",
+     overlay = false, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 1: Inputs
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Volume
+i_normLen   = input.int(200, "Normalization Length", minval = 10, group = "Volume", tooltip = "How many bars to normalize volume against. Default 200 works on all timeframes. Use 500-1000 for intraday if you want longer history.")
+i_showCols  = input.bool(true, "Show Volume Columns", group = "Volume")
+
+// Divergence
+i_lbL       = input.int(5, "Pivot Lookback Left", minval = 1, group = "Divergence",
+     tooltip = "Higher values (e.g. 8-10) reduce noise on higher timeframes but delay signals; lower values (e.g. 3-5) are more responsive but noisier")
+i_lbR       = input.int(5, "Pivot Lookback Right", minval = 1, group = "Divergence",
+     tooltip = "Higher values (e.g. 8-10) reduce noise on higher timeframes but delay signals; lower values (e.g. 3-5) are more responsive but noisier")
+i_maxBars   = input.int(50, "Max Bars Between Pivots", minval = 5, group = "Divergence")
+i_showLines = input.bool(true, "Show Divergence Lines", group = "Divergence")
+i_minNormVol = input.int(70, "Min Norm Volume for Signal", minval = 0, maxval = 100, group = "Divergence")
+i_minPivotDepth = input.float(0.25, "Min Pivot Depth (ATR mult)", minval=0.0, maxval=2.0, step=0.05, group = "Divergence", tooltip = "Minimum price distance between consecutive pivots as ATR multiple. Higher = fewer but more meaningful signals.")
+
+// VEYD
+i_useVEYD    = input.bool(true, "Enable VEYD Exhaustion", group = "VEYD")
+i_veydLen    = input.int(5, "VEYD Window (bars before pivot)", minval=3, maxval=10, group = "VEYD")
+i_veydThresh = input.float(0.4, "VEYD Decay Threshold", minval=0.1, maxval=0.9, step=0.05, group = "VEYD", tooltip="Ratio below this = exhaustion. Lower = stricter.")
+
+// Surprisal
+i_useSurprisal = input.bool(true, "Enable Volume Surprisal", group = "Surprisal")
+i_surpLen      = input.int(100, "Surprisal Lookback", minval=20, group = "Surprisal")
+i_surpBins     = input.int(20, "Histogram Bins", minval=5, maxval=50, group = "Surprisal")
+i_surpThresh   = input.float(3.0, "Surprisal Threshold (bits)", minval=1.0, step=0.5, group = "Surprisal")
+
+// Phase Transition
+i_usePT       = input.bool(true, "Enable Phase Transition", group = "Phase Transition")
+i_ptWindow    = input.int(14, "Phase Window", minval=5, maxval=50, group = "Phase Transition")
+i_ptThreshPct = input.float(90, "Coupling Threshold (%rank)", minval=50, maxval=99, group = "Phase Transition")
+i_showLH      = input.bool(true, "Show Latent Heat Gauge", group = "Phase Transition")
+
+// Delta (close-position method — no LTF request needed)
+
+// Signals
+i_minScore      = input.int(1, "Min Signal Score (stars)", minval=1, maxval=5, group = "Signals", tooltip = "Minimum star rating to show signal. 1=all, 2=require at least one confirmation, 3+=high conviction only.")
+i_showLabels    = input.bool(true, "Show Signal Labels", group = "Signals")
+i_deltaConfirm  = input.bool(true, "Require Delta Confirmation", group = "Signals")
+i_bullColor     = input.color(color.lime, "Bullish Color", group = "Signals")
+i_bearColor     = input.color(color.red, "Bearish Color", group = "Signals")
+i_labelSize     = input.string("Small", "Label Size", options = ["Tiny", "Small", "Normal", "Large"], group = "Signals")
+i_bullIcon      = input.string("▲", "Bullish Icon", group = "Signals")
+i_bearIcon      = input.string("▼", "Bearish Icon", group = "Signals")
+i_showDelta     = input.bool(true, "Show Delta on Label", group = "Signals")
+i_showVol       = input.bool(true, "Show Volume on Label", group = "Signals")
+i_labelStyle    = input.string("Label", "Label Style", options = ["Label", "Shape Arrow", "Shape Diamond", "Shape Cross"], group = "Signals")
+
+// WaveTrend
+i_wtChannel = input.int(10, "WT Channel Length", minval=1, group = "WaveTrend")
+i_wtAvg     = input.int(21, "WT Average Length", minval=1, group = "WaveTrend")
+i_wtSmooth  = input.int(4, "WT Smoothing", minval=1, group = "WaveTrend")
+i_ob1       = input.int(53, "Overbought", group = "WaveTrend")
+i_os1       = input.int(-53, "Oversold", group = "WaveTrend")
+
+// Leading
+i_enableLeading = input.bool(true, "Enable Leading Signals", group = "Leading")
+i_streamWindow  = input.int(20, "Local Extreme Window", minval=5, maxval=50, group = "Leading")
+
+// Regime
+i_enableRegime = input.bool(true, "Enable ADX Regime Filter", group = "Regime")
+i_adxLen       = input.int(14, "ADX Length", minval=5, group = "Regime")
+i_trendThresh  = input.int(25, "ADX Trend Threshold", minval=10, maxval=50, group = "Regime")
+
+// Cooldown
+i_cooldownBars = input.int(10, "Min Bars Between Signals", minval=0, maxval=100, group = "Cooldown")
+
+// Support Zones
+i_showSupport   = input.bool(true, "Show Support Zones", group = "Support")
+i_zoneATRMult   = input.float(0.25, "Zone Width (ATR mult)", minval=0.05, maxval=1.0, step=0.05, group = "Support")
+
+// Visual
+i_coldColor = input.color(#2D1B69, "Cold Color (low vol)", group = "Visual")
+i_hotColor  = input.color(#FFD700, "Hot Color (high vol)", group = "Visual")
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 2: Helper Functions
+// ──────────────────────────────────────────────────────────────────────────────
+
+f_signalScore(float nVol, float dlt, bool isBull, bool veyd, bool surp, bool pt) =>
+    int score = 1
+    bool highVol = nVol >= 80
+    bool deltaOK = isBull ? dlt > 0 : dlt < 0
+    if highVol or deltaOK
+        score := 2
+    if highVol and deltaOK
+        score := 3
+    if veyd and score < 5
+        score += 1
+    if surp and score < 5
+        score += 1
+    if pt and score < 5
+        score += 1
+    score
+
+f_fmtNum(float val, bool showSign) =>
+    float absVal = math.abs(val)
+    string sign = showSign ? (val > 0 ? "+" : val < 0 ? "-" : "") : ""
+    string str_ = absVal >= 1000000 ? str.tostring(absVal / 1000000, "#.##") + "M" :
+                  absVal >= 1000    ? str.tostring(absVal / 1000, "#.#") + "K" :
+                  str.tostring(absVal, "#")
+    sign + str_
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 3: Normalized Volume
+// ──────────────────────────────────────────────────────────────────────────────
+
+normVol  = ta.percentrank(volume, i_normLen)
+volColor = color.from_gradient(normVol, 0, 100, i_coldColor, i_hotColor)
+float atrVal = ta.atr(14)
+
+f_medianNormVol(int center, int halfW) =>
+    int w = 2 * halfW + 1
+    float[] vals = array.new_float(w)
+    for j = 0 to w - 1
+        array.set(vals, j, normVol[center - halfW + j])
+    array.sort(vals, order.ascending)
+    array.get(vals, int(math.floor(w / 2)))
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 4: Volume Delta
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Volume delta (close-position method)
+range_  = high - low
+buyVol  = range_ != 0 ? volume * (close - low) / range_ : volume * 0.5
+float delta = buyVol - (volume - buyVol)
+
+// Section 4B: Effort-Yield per bar
+float eyRaw = volume > 0 ? math.abs(close - open) / volume : 0.0
+float eyNorm = ta.percentrank(eyRaw, i_normLen)
+
+// Section 4C: Volume Surprisal
+float surpVolMin = ta.lowest(volume, i_surpLen)
+float surpVolMax = ta.highest(volume, i_surpLen)
+float surpBinW = (surpVolMax - surpVolMin) / i_surpBins
+int surpCurBin = surpBinW > 0 ? math.min(int(math.floor((volume - surpVolMin) / surpBinW)), i_surpBins - 1) : 0
+int surpSameBinCount = 0
+for j = 0 to i_surpLen - 1
+    float vj = volume[j]
+    int bj = surpBinW > 0 ? math.min(int(math.floor((vj - surpVolMin) / surpBinW)), i_surpBins - 1) : 0
+    if bj == surpCurBin
+        surpSameBinCount += 1
+float surpProb = surpSameBinCount / float(i_surpLen)
+float surprisal = surpProb > 0 ? -math.log(surpProb) / math.log(2) : 0.0
+bool highSurprisal = i_useSurprisal and surprisal >= i_surpThresh
+
+// Section 4D: Latent Heat Phase Transition
+float cumVol = math.sum(volume, i_ptWindow)
+float netMove = math.abs(close - close[i_ptWindow])
+float coupling = netMove > syminfo.mintick ? cumVol / netMove : cumVol / syminfo.mintick
+float couplingNorm = ta.percentrank(coupling, i_normLen)
+bool latentHeat = couplingNorm >= i_ptThreshPct
+var int barsSinceLH = 999
+if latentHeat
+    barsSinceLH := 0
+else
+    barsSinceLH += 1
+bool phaseTransition = i_usePT and barsSinceLH > 0 and barsSinceLH <= 3 and not latentHeat
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 5: WaveTrend Oscillator
+// ──────────────────────────────────────────────────────────────────────────────
+
+float wtEsa = ta.ema(hlc3, i_wtChannel)
+float wtD   = ta.ema(math.abs(hlc3 - wtEsa), i_wtChannel)
+float wtCi  = wtD != 0 ? (hlc3 - wtEsa) / (0.015 * wtD) : 0.0
+float wt1   = ta.ema(wtCi, i_wtAvg)
+float wt2   = ta.sma(wt1, i_wtSmooth)
+float wtDiff = wt1 - wt2
+var int wtDirection = 0
+wtDirection := wt1 > wt1[1] ? 1 : wt1 < wt1[1] ? -1 : wtDirection[1]
+bool wtBuySignal  = ta.crossover(wt1, wt2) and wt1 <= i_os1
+bool wtSellSignal = ta.crossunder(wt1, wt2) and wt1 >= i_ob1
+bool wtOB = wt1 > i_ob1
+bool wtOS = wt1 < i_os1
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 5B: ADX Regime Filter
+// ──────────────────────────────────────────────────────────────────────────────
+
+[diPlus, diMinus, adxVal] = ta.dmi(i_adxLen, i_adxLen)
+bool adxTrending = i_enableRegime and not na(adxVal) and adxVal > i_trendThresh
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 5C: Leading Tier 1 — Early Warning (fires on current bar, may repaint)
+// ──────────────────────────────────────────────────────────────────────────────
+
+float resultPR = ta.percentrank(high - low, i_normLen)
+bool effortStalling = normVol >= 80 and resultPR <= 40
+bool nearLocalHigh = high >= ta.highest(high, i_streamWindow)
+bool nearLocalLow = low <= ta.lowest(low, i_streamWindow)
+bool lhRising = couplingNorm >= 75 and couplingNorm > couplingNorm[1] and couplingNorm[1] > couplingNorm[2]
+bool earlyBull = i_enableLeading and effortStalling and nearLocalLow and (lhRising or phaseTransition) and close > open
+bool earlyBear = i_enableLeading and effortStalling and nearLocalHigh and (lhRising or phaseTransition) and close < open
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 6: Pivot Detection
+// ──────────────────────────────────────────────────────────────────────────────
+
+pricePH      = ta.pivothigh(high, i_lbL, i_lbR)
+pricePL      = ta.pivotlow(low, i_lbL, i_lbR)
+int clusterHalf = math.max(1, int(math.floor(i_lbR / 2)))
+pivotNormVol = f_medianNormVol(i_lbR, clusterHalf)
+int pivotBar = bar_index - i_lbR
+
+// VEYD decay at pivot
+float veydFirst = eyNorm[i_lbR + i_veydLen - 1]
+float veydLast = eyNorm[i_lbR]
+bool veydExhaustion = i_useVEYD and not na(veydFirst) and not na(veydLast) and veydLast > 0 and veydFirst / veydLast > (1.0 / i_veydThresh)
+
+// Surprisal at pivot
+float pivotSurprisal = surprisal[i_lbR]
+bool pivotHighSurp = i_useSurprisal and pivotSurprisal >= i_surpThresh
+
+// Phase transition at pivot
+bool pivotPT = phaseTransition[i_lbR] or phaseTransition
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 6: Divergence Detection
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Tracking vars for previous pivots
+var float prevPriceHigh     = na
+var float prevNormVolAtHigh = na
+var int   prevHighBar       = na
+var float prevPriceLow      = na
+var float prevNormVolAtLow  = na
+var int   prevLowBar        = na
+
+// Divergence flags for this bar
+bool bullDiv = false
+bool bearDiv = false
+
+// --- Bearish divergence: price makes higher high, volume makes lower high ---
+if not na(pricePH)
+    if not na(prevPriceHigh) and pricePH > prevPriceHigh and pivotNormVol < prevNormVolAtHigh and (pivotBar - prevHighBar) <= i_maxBars and pivotNormVol >= i_minNormVol and (pricePH - prevPriceHigh) > atrVal * i_minPivotDepth
+        bearDiv := true
+        if i_showLines
+            line.new(prevHighBar, prevNormVolAtHigh, pivotBar, pivotNormVol,
+                 color = i_bearColor, width = 2, style = line.style_dashed)
+    // Update tracking — always store the latest pivot high
+    prevPriceHigh     := pricePH
+    prevNormVolAtHigh := pivotNormVol
+    prevHighBar       := pivotBar
+
+// --- Bullish divergence: price makes lower low, volume makes higher low ---
+if not na(pricePL)
+    if not na(prevPriceLow) and pricePL < prevPriceLow and pivotNormVol > prevNormVolAtLow and (pivotBar - prevLowBar) <= i_maxBars and pivotNormVol >= i_minNormVol and (prevPriceLow - pricePL) > atrVal * i_minPivotDepth
+        bullDiv := true
+        if i_showLines
+            line.new(prevLowBar, prevNormVolAtLow, pivotBar, pivotNormVol,
+                 color = i_bullColor, width = 2, style = line.style_dashed)
+    // Update tracking — always store the latest pivot low
+    prevPriceLow     := pricePL
+    prevNormVolAtLow := pivotNormVol
+    prevLowBar       := pivotBar
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 7: Signal Labels
+// ──────────────────────────────────────────────────────────────────────────────
+
+float pivotDelta = delta[i_lbR]
+float pivotVol   = volume[i_lbR]
+
+// Delta confirmation logic
+bool deltaOK = not i_deltaConfirm or (bullDiv and pivotDelta > 0) or (bearDiv and pivotDelta < 0)
+
+// Signal strength scoring (1-3 stars)
+int bullScore = bullDiv ? f_signalScore(pivotNormVol, pivotDelta, true, veydExhaustion, pivotHighSurp, pivotPT) : 0
+int bearScore = bearDiv ? f_signalScore(pivotNormVol, pivotDelta, false, veydExhaustion, pivotHighSurp, pivotPT) : 0
+
+// Resolve user-configurable label size
+f_getLabelSize() =>
+    switch i_labelSize
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        "Large"  => size.large
+        => size.small
+
+// Build label text based on user toggles
+f_buildLabelText(bool isBull, float vol, float dlt, int score, bool veyd, bool surp, bool pt) =>
+    string icon = isBull ? i_bullIcon : i_bearIcon
+    string stars = score >= 5 ? "★★★★★" : score == 4 ? "★★★★" : score == 3 ? "★★★" : score == 2 ? "★★" : "★"
+    string sigType = score >= 4 ? "REVERSAL" : score == 3 ? "PROBABLE" : "DCA"
+    string txt = icon + " " + stars + " " + sigType
+    if veyd
+        txt += " [EXH]"
+    if surp
+        txt += " [S]"
+    if pt
+        txt += " [PT]"
+    if i_showVol
+        txt += " Vol: " + f_fmtNum(vol, false)
+    if i_showDelta
+        txt += (i_showVol ? " | " : " ") + "\u0394: " + f_fmtNum(dlt, true)
+    txt
+
+// --- Cooldown ---
+var int lastBullSignalBar = 0
+var int lastBearSignalBar = 0
+bool bullCooldownOK = i_cooldownBars == 0 or (bar_index - lastBullSignalBar) >= i_cooldownBars
+bool bearCooldownOK = i_cooldownBars == 0 or (bar_index - lastBearSignalBar) >= i_cooldownBars
+
+// --- Regime downgrade: add [TREND] warning, reduce score by 1 in trending market ---
+int bullScoreAdj = bullScore > 0 and adxTrending ? math.max(1, bullScore - 1) : bullScore
+int bearScoreAdj = bearScore > 0 and adxTrending ? math.max(1, bearScore - 1) : bearScore
+
+// --- Signal booleans (with cooldown + regime-adjusted score) ---
+bool bullSignal = bullDiv and deltaOK and bullScoreAdj >= i_minScore and bullCooldownOK
+bool bearSignal = bearDiv and deltaOK and bearScoreAdj >= i_minScore and bearCooldownOK
+
+if bullSignal
+    lastBullSignalBar := bar_index
+if bearSignal
+    lastBearSignalBar := bar_index
+
+// --- SL/TP/R:R ---
+float slBull = not na(prevPriceLow) ? prevPriceLow - atrVal * 0.5 : low - atrVal
+float slBear = not na(prevPriceHigh) ? prevPriceHigh + atrVal * 0.5 : high + atrVal
+float slPrice = bullSignal ? slBull : slBear
+float riskSize = math.abs(close - slPrice)
+float tp1Price = bullSignal ? close + riskSize * 1.5 : close - riskSize * 1.5
+float rrRatio = riskSize > 0 ? 1.5 : 0.0
+string rrText = " SL:" + f_fmtNum(slPrice, false) + " R:R 1.5:1"
+string trendWarn = adxTrending ? " [TREND]" : ""
+
+// --- WT Timing Trigger ---
+var int barsSinceVDRS_Bull = 999
+var int barsSinceVDRS_Bear = 999
+if bullSignal
+    barsSinceVDRS_Bull := 0
+else
+    barsSinceVDRS_Bull += 1
+if bearSignal
+    barsSinceVDRS_Bear := 0
+else
+    barsSinceVDRS_Bear += 1
+bool wtTimingBull = barsSinceVDRS_Bull <= 15 and wtBuySignal
+bool wtTimingBear = barsSinceVDRS_Bear <= 15 and wtSellSignal
+
+// --- Support Zones ---
+var array<float> supportPrices = array.new<float>()
+var array<box> supportBoxes = array.new<box>()
+if not na(pricePL) and pivotNormVol >= i_minNormVol and i_showSupport
+    float zHalf = atrVal * i_zoneATRMult
+    bool isDupe = false
+    if supportPrices.size() > 0
+        for k = 0 to supportPrices.size() - 1
+            if math.abs(supportPrices.get(k) - pricePL) < zHalf * 2
+                isDupe := true
+    if not isDupe
+        if supportBoxes.size() >= 5
+            box.delete(supportBoxes.shift())
+            supportPrices.shift()
+        supportPrices.push(pricePL)
+        supportBoxes.push(box.new(pivotBar, pricePL + zHalf, pivotBar + 50, pricePL - zHalf, bgcolor=color.new(i_bullColor, 90), border_color=color.new(i_bullColor, 70), force_overlay=true))
+
+if i_showSupport and supportBoxes.size() > 0
+    for k = 0 to supportBoxes.size() - 1
+        box.set_right(supportBoxes.get(k), bar_index + 10)
+
+// Determine active signal score for bgcolor (global scope)
+int signalScore = bullSignal ? bullScoreAdj : bearSignal ? bearScoreAdj : 0
+
+// --- Labels on the PRICE CHART (force_overlay = true) ---
+// This makes labels appear on the main trading chart even though the indicator is overlay=false
+var array<label> lblArr = array.new<label>()
+
+if (bullSignal or bearSignal) and i_showLabels
+    int activeScore = bullSignal ? bullScore : bearScore
+    string txt = f_buildLabelText(bullSignal, pivotVol, pivotDelta, activeScore, veydExhaustion, pivotHighSurp, pivotPT) + rrText + trendWarn
+    color  lc  = bullSignal ? i_bullColor : i_bearColor
+    float  yPos = bullSignal ? low[i_lbR] : high[i_lbR]
+
+    if i_labelStyle == "Label"
+        label lbl = label.new(pivotBar, yPos, txt,
+             color = lc, textcolor = color.white, size = f_getLabelSize(),
+             style = bullSignal ? label.style_label_up : label.style_label_down,
+             force_overlay = true)
+        array.push(lblArr, lbl)
+    else
+        string shapeIcon = bullSignal ? i_bullIcon : i_bearIcon
+        label lbl = label.new(pivotBar, yPos, shapeIcon,
+             color = color.new(lc, 100), textcolor = lc, size = f_getLabelSize(),
+             style = bullSignal ? label.style_label_up : label.style_label_down,
+             force_overlay = true)
+        array.push(lblArr, lbl)
+
+    // Cap at 100 labels
+    if array.size(lblArr) > 100
+        label.delete(array.shift(lblArr))
+
+// --- Plotshape signals on the PRICE CHART (force_overlay = true) ---
+plotshape(bullSignal and i_labelStyle == "Shape Arrow", title = "Bull Arrow",
+     style = shape.triangleup, location = location.belowbar,
+     color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bearSignal and i_labelStyle == "Shape Arrow", title = "Bear Arrow",
+     style = shape.triangledown, location = location.abovebar,
+     color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bullSignal and i_labelStyle == "Shape Diamond", title = "Bull Diamond",
+     style = shape.diamond, location = location.belowbar,
+     color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bearSignal and i_labelStyle == "Shape Diamond", title = "Bear Diamond",
+     style = shape.diamond, location = location.abovebar,
+     color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bullSignal and i_labelStyle == "Shape Cross", title = "Bull Cross",
+     style = shape.cross, location = location.belowbar,
+     color = i_bullColor, size = size.small, offset = -i_lbR, force_overlay = true)
+plotshape(bearSignal and i_labelStyle == "Shape Cross", title = "Bear Cross",
+     style = shape.cross, location = location.abovebar,
+     color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// --- Leading signal labels (Tier 1: Early Warning) ---
+var array<label> leadLblArr = array.new<label>()
+if i_enableLeading and earlyBull and i_showLabels
+    leadLblArr.push(label.new(bar_index, low, "EARLY BULL", color=color.new(color.aqua, 30), textcolor=color.white, size=size.tiny, style=label.style_label_up, force_overlay=true))
+if i_enableLeading and earlyBear and i_showLabels
+    leadLblArr.push(label.new(bar_index, high, "EARLY BEAR", color=color.new(color.orange, 30), textcolor=color.white, size=size.tiny, style=label.style_label_down, force_overlay=true))
+if leadLblArr.size() > 50
+    label.delete(leadLblArr.shift())
+
+// --- WT Timing Entry labels ---
+if wtTimingBull and i_showLabels
+    label.new(bar_index, low, "ENTER LONG (WT)", color=color.new(#00c853, 0), textcolor=color.white, size=size.small, style=label.style_label_up, force_overlay=true)
+if wtTimingBear and i_showLabels
+    label.new(bar_index, high, "ENTER SHORT (WT)", color=color.new(#d50000, 0), textcolor=color.white, size=size.small, style=label.style_label_down, force_overlay=true)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 8: Plotting
+// ──────────────────────────────────────────────────────────────────────────────
+
+// WaveTrend lines
+color wt1Color = wtDirection > 0 ? color.green : wtDirection < 0 ? color.red : color.gray
+plot(wt1, "WT1", color=wt1Color, linewidth=2)
+plot(wt2, "WT2", color=color.new(#ff5722, 0), linewidth=1)
+hline(0, "Zero", color=color.new(color.gray, 70))
+hline(53, "OB", color=color.new(color.red, 70), linestyle=hline.style_dotted)
+hline(-53, "OS", color=color.new(color.green, 70), linestyle=hline.style_dotted)
+
+// WT Histogram
+color histCol = wtDiff >= 0 ? (wtDiff > wtDiff[1] ? color.new(color.green, 30) : color.new(color.green, 70)) : (wtDiff < wtDiff[1] ? color.new(color.red, 30) : color.new(color.red, 70))
+plot(wtDiff, "WT Histogram", color=histCol, style=plot.style_columns)
+
+// Normalized volume columns with gradient color (behind WT)
+plot(i_showCols ? normVol * 0.3 : na, "Norm Volume", color = volColor, style = plot.style_columns)
+
+// Reference levels (hline requires literal constants)
+hline(80, "High Volume", color = color.new(color.orange, 60), linestyle = hline.style_dotted)
+hline(50, "Mid Volume",  color = color.new(color.gray, 70),   linestyle = hline.style_dotted)
+hline(20, "Low Volume",  color = color.new(color.teal, 60),   linestyle = hline.style_dotted)
+
+// Background highlight on divergence signals — intensity scales with score
+int bullBgAlpha = signalScore >= 5 ? 70 : signalScore == 4 ? 75 : signalScore == 3 ? 80 : signalScore == 2 ? 90 : 95
+int bearBgAlpha = signalScore >= 5 ? 70 : signalScore == 4 ? 75 : signalScore == 3 ? 80 : signalScore == 2 ? 90 : 95
+bgcolor(bullSignal ? color.new(i_bullColor, bullBgAlpha) : na, title = "Bull Div BG")
+bgcolor(bearSignal ? color.new(i_bearColor, bearBgAlpha) : na, title = "Bear Div BG")
+
+// Latent Heat Gauge
+color lhColor = color.from_gradient(couplingNorm, 0, 100, color.new(color.blue, 60), color.new(color.red, 0))
+plot(i_showLH ? couplingNorm : na, "Latent Heat", color=lhColor, linewidth=2)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Section 9: Alerts
+// ──────────────────────────────────────────────────────────────────────────────
+
+alertcondition(bullDiv,                "Bullish Divergence",           "VDRS: Bullish volume divergence detected")
+alertcondition(bearDiv,                "Bearish Divergence",           "VDRS: Bearish volume divergence detected")
+alertcondition(bullDiv and deltaOK,    "Delta-Confirmed Bullish",      "VDRS: Delta-confirmed bullish divergence")
+alertcondition(bearDiv and deltaOK,    "Delta-Confirmed Bearish",      "VDRS: Delta-confirmed bearish divergence")
+alertcondition((bullDiv or bearDiv) and deltaOK, "Any Signal",         "VDRS: Volume divergence signal detected")
+alertcondition(bullSignal and veydExhaustion, "VEYD Exhaustion Bull", "VDRS: Bullish + VEYD exhaustion")
+alertcondition(bearSignal and veydExhaustion, "VEYD Exhaustion Bear", "VDRS: Bearish + VEYD exhaustion")
+alertcondition(bullSignal and highSurprisal, "Surprisal Bull", "VDRS: Bullish + high volume surprisal")
+alertcondition(bearSignal and highSurprisal, "Surprisal Bear", "VDRS: Bearish + high volume surprisal")
+alertcondition(phaseTransition, "Phase Transition", "UTS: Latent heat phase transition detected")
+alertcondition(earlyBull, "Early Bull Warning", "UTS: Early bullish warning (may repaint)")
+alertcondition(earlyBear, "Early Bear Warning", "UTS: Early bearish warning (may repaint)")
+alertcondition(wtTimingBull, "WT Timing Bull Entry", "UTS: WT timing bullish entry triggered")
+alertcondition(wtTimingBear, "WT Timing Bear Entry", "UTS: WT timing bearish entry triggered")
+alertcondition(wtBuySignal, "WT Buy Signal", "UTS: WaveTrend bullish cross in oversold")
+alertcondition(wtSellSignal, "WT Sell Signal", "UTS: WaveTrend bearish cross in overbought")
