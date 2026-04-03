@@ -1,0 +1,1501 @@
+// ============================================================================
+// Manipulation X v4 — ICT Scalping Indicator
+// Pine Script v6 | Multi-Timeframe FVG, Liquidity, and Signal Detection
+// ============================================================================
+//@version=6
+indicator("Manipulation X v4", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// SECTION 1: INPUTS
+// ============================================================================
+
+// --- General ---
+i_showDashboard     = input.bool(true, "Show Dashboard", group = "General")
+i_maxSignals        = input.int(3, "Max Signals Per Bar", minval = 1, maxval = 10, group = "General")
+
+// --- FVG Settings ---
+i_showFVG           = input.bool(true, "Show FVGs", group = "FVG")
+i_fvgBullColor      = input.color(color.new(color.green, 80), "Bull FVG Color", group = "FVG")
+i_fvgBearColor      = input.color(color.new(color.red, 80), "Bear FVG Color", group = "FVG")
+i_fvgMitigateColor  = input.color(color.new(color.gray, 90), "Mitigated FVG Color", group = "FVG")
+i_fvgMax            = input.int(50, "Max FVGs Stored", minval = 10, maxval = 200, group = "FVG")
+i_showLTFFVG        = input.bool(true, "Show LTF FVGs", group = "FVG")
+i_ltfFVGBullColor   = input.color(color.new(color.green, 90), "LTF Bull FVG Color", group = "FVG")
+i_ltfFVGBearColor   = input.color(color.new(color.red, 90), "LTF Bear FVG Color", group = "FVG")
+i_showIFVG          = input.bool(true, "Show IFVGs", group = "FVG")
+i_ifvgBullColor     = input.color(color.new(color.teal, 75), "Bull IFVG Color", group = "FVG")
+i_ifvgBearColor     = input.color(color.new(color.maroon, 75), "Bear IFVG Color", group = "FVG")
+
+// --- HTF Settings ---
+i_showHTF           = input.bool(true, "Show HTF FVGs", group = "HTF")
+i_htfTF             = input.timeframe("60", "HTF Timeframe (1H)", group = "HTF")
+i_htfTF2            = input.timeframe("240", "HTF 2 Timeframe (4H)", group = "HTF")
+i_ltfTF             = input.timeframe("5", "LTF Timeframe", group = "HTF")
+i_ltfTF2            = input.timeframe("15", "LTF 2 Timeframe", group = "HTF")
+
+// --- Liquidity Settings ---
+i_showSweeps        = input.bool(true, "Show Liquidity Sweeps", group = "Liquidity")
+i_sweepWickPct      = input.float(0.3, "Sweep Wick % Threshold", minval = 0.1, maxval = 1.0, step = 0.05, group = "Liquidity")
+i_showPDHL          = input.bool(true, "Show PDH/PDL", group = "Liquidity")
+i_pdhColor          = input.color(color.new(color.blue, 30), "PDH Color", group = "Liquidity")
+i_pdlColor          = input.color(color.new(color.purple, 30), "PDL Color", group = "Liquidity")
+i_showPMHL          = input.bool(true, "Show Pre-Market H/L", group = "Liquidity")
+i_pmhColor          = input.color(color.new(color.aqua, 40), "PMH Color", group = "Liquidity")
+i_pmlColor          = input.color(color.new(color.aqua, 40), "PML Color", group = "Liquidity")
+i_showEqHL          = input.bool(true, "Show Equal H/L", group = "Liquidity")
+i_eqTolerance       = input.float(0.03, "Equal H/L Tolerance (%)", minval = 0.01, maxval = 0.5, step = 0.01, group = "Liquidity")
+i_pivotLen          = input.int(5, "Pivot Lookback", minval = 2, maxval = 20, group = "Liquidity")
+i_eqColor           = input.color(color.new(color.yellow, 30), "Equal Level Color", group = "Liquidity")
+
+// --- SMT Divergence ---
+i_showSMT           = input.bool(true, "Show SMT Divergence", group = "SMT Divergence")
+i_smtSymbol         = input.symbol("", "Correlated Symbol (e.g. ES1!)", group = "SMT Divergence")
+i_smtPivotLen       = input.int(5, "SMT Pivot Lookback", minval = 2, maxval = 20, group = "SMT Divergence")
+i_smtBullColor      = input.color(color.new(color.lime, 20), "Bullish SMT Color", group = "SMT Divergence")
+i_smtBearColor      = input.color(color.new(color.red, 20), "Bearish SMT Color", group = "SMT Divergence")
+
+// --- Session Settings ---
+i_sessFilter        = input.session("0930-1100", "Session Filter", group = "Session")
+i_useSess           = input.bool(true, "Use Session Filter", group = "Session")
+i_showSession       = input.bool(true, "Show Session Levels", group = "Session")
+
+// --- Session Backgrounds ---
+i_showSessBg        = input.bool(true, "Show Session Backgrounds", group = "Session Backgrounds")
+i_asiaSessStart     = input.string("1900", "Asia/Tokyo Start (HHMM ET)", group = "Session Backgrounds")
+i_asiaSessEnd       = input.string("0400", "Asia/Tokyo End (HHMM ET)", group = "Session Backgrounds")
+i_asiaSessColor     = input.color(color.new(color.blue, 92), "Asia/Tokyo Color", group = "Session Backgrounds")
+i_londonSessStart   = input.string("0300", "London Start (HHMM ET)", group = "Session Backgrounds")
+i_londonSessEnd     = input.string("1200", "London End (HHMM ET)", group = "Session Backgrounds")
+i_londonSessColor   = input.color(color.new(color.blue, 90), "London Color", group = "Session Backgrounds")
+i_nySessStart       = input.string("0930", "New York Start (HHMM ET)", group = "Session Backgrounds")
+i_nySessEnd         = input.string("1600", "New York End (HHMM ET)", group = "Session Backgrounds")
+i_nySessColor       = input.color(color.new(color.blue, 88), "New York Color", group = "Session Backgrounds")
+i_overlapColor      = input.color(color.new(color.purple, 90), "London-NY Overlap Color", group = "Session Backgrounds")
+
+// --- Macro Settings ---
+i_showMacros        = input.bool(true, "Show Macro Windows", group = "Macros")
+i_macro1Start       = input.string("0950", "Macro 1 Start", group = "Macros")
+i_macro1End         = input.string("1010", "Macro 1 End", group = "Macros")
+i_macro2Start       = input.string("1050", "Macro 2 Start", group = "Macros")
+i_macro2End         = input.string("1110", "Macro 2 End", group = "Macros")
+i_macro3Start       = input.string("1310", "Macro 3 Start (London Close)", group = "Macros")
+i_macro3End         = input.string("1340", "Macro 3 End (London Close)", group = "Macros")
+i_macroColor        = input.color(color.new(color.yellow, 90), "Macro BG Color", group = "Macros")
+
+// --- Signal Settings ---
+i_showSignals       = input.bool(true, "Show Signals", group = "Signals")
+i_showVShape        = input.bool(true, "Show V-Shape Patterns", group = "Signals")
+i_vshapeLen         = input.int(3, "V-Shape Lookback Bars", minval = 1, maxval = 10, group = "Signals")
+i_vshapeMom         = input.float(1.5, "V-Shape Momentum Factor", minval = 1.0, maxval = 5.0, step = 0.1, group = "Signals")
+i_filterIntStruct   = input.bool(true,  "Filter: Block if Internal Structure Taken", group = "Signals")
+i_showBELevel       = input.bool(true,  "Show Break-Even Level", group = "Signals")
+i_showSLTP          = input.bool(true,  "Show SL/TP Levels", group = "Signals")
+i_slBuffer          = input.float(0.5,  "SL Buffer (Points)", minval = 0.0, step = 0.1, group = "Signals")
+i_beLevelColor      = input.color(color.new(color.orange, 0), "Break-Even Level Color", group = "Signals")
+
+// ============================================================================
+// SECTION 2: USER-DEFINED TYPES
+// ============================================================================
+
+type FVG
+    float   top
+    float   bottom
+    int     startBar
+    int     dir             // 1 = bullish, -1 = bearish
+    bool    active
+    bool    inversed
+    box     bx
+
+type Sweep
+    float   level
+    int     barIdx
+    int     dir             // 1 = bullish sweep (below), -1 = bearish sweep (above)
+    label   lbl = na
+
+type VShape
+    int     barIdx
+    int     dir             // 1 = bullish, -1 = bearish
+    float   momentum
+    label   lbl = na
+
+type Signal
+    int     barIdx
+    int     dir             // 1 = long, -1 = short
+    string  sigType         // "reversal" or "continuation"
+    label   lbl
+
+// --- Equal High / Low level ---
+type EqLevel
+    float   price           // price of the equal level
+    int     barIdx          // bar when the equal level was confirmed
+    int     dir             // 1 = equal high, -1 = equal low
+    bool    swept           // true once price has traded through and closed back
+    line    ln              // the horizontal line drawn on chart
+    bool    confirmed = false  // true for confirmed equal pairs (dashed lines), false for raw pivots (dotted lines)
+
+// ============================================================================
+// SECTION 3: GLOBAL VARIABLES
+// ============================================================================
+
+var array<FVG>      fvgArr      = array.new<FVG>()
+var array<FVG>      ifvgArr     = array.new<FVG>()
+var array<FVG>      htfFVGArr   = array.new<FVG>()
+var array<FVG>      htf2FVGArr  = array.new<FVG>()
+var array<FVG>      ltfFVGArr   = array.new<FVG>()
+var array<FVG>      ltf2FVGArr  = array.new<FVG>()
+var array<Sweep>    sweepArr    = array.new<Sweep>()
+var array<VShape>   vshapeArr   = array.new<VShape>()
+var array<Signal>   signalArr   = array.new<Signal>()
+var array<EqLevel>  eqLevels    = array.new<EqLevel>()
+
+var int   bullSigCount  = 0
+var int   bearSigCount  = 0
+var int   totalSignals  = 0
+
+var float sessionHigh   = na
+var float sessionLow    = na
+var float sessionOpen   = na
+var float prevDayHigh   = na
+var float prevDayLow    = na
+
+var line  ln_PDH        = na
+var line  ln_PDL        = na
+
+// --- SMT Divergence tracking (var at global scope for pivot history) ---
+var float smtPrevMyLow     = na
+var float smtPrevMyCorrLow = na
+var float smtPrevMyHigh    = na
+var float smtPrevCorrHigh  = na
+var array<label> smtLabels = array.new<label>()
+
+// --- Pre-Market H/L tracking (4:00–9:30 ET) ---
+var float preMarketHigh = na
+var float preMarketLow  = na
+var line  ln_PMH        = na
+var line  ln_PML        = na
+var bool  pmFrozen      = false   // true once the 9:30 open has locked in the values
+
+// ============================================================================
+// SECTION 4: UTILITY FUNCTIONS
+// ============================================================================
+
+// --- Session detection with explicit hour/minute params ---
+f_inSession(int startH, int startM, int endH, int endM) =>
+    h   = hour(time)
+    m   = minute(time)
+    cur = h * 60 + m
+    s   = startH * 60 + startM
+    e   = endH * 60 + endM
+    s <= e ? (cur >= s and cur < e) : (cur >= s or cur < e)
+
+// --- Zero-param wrapper for regular session (9:30-16:00) ---
+f_inRegularSession() =>
+    f_inSession(9, 30, 16, 0)
+
+// --- Session check using input session string ---
+inSession() =>
+    not i_useSess or not na(time(timeframe.period, i_sessFilter))
+
+// --- Parse HHMM string to check if current time is within range ---
+f_isInTimeRange(string startStr, string endStr) =>
+    startH = int(math.floor(str.tonumber(str.substring(startStr, 0, 2))))
+    startM = int(math.floor(str.tonumber(str.substring(startStr, 2, 4))))
+    endH   = int(math.floor(str.tonumber(str.substring(endStr, 0, 2))))
+    endM   = int(math.floor(str.tonumber(str.substring(endStr, 2, 4))))
+    f_inSession(startH, startM, endH, endM)
+
+// --- Macro window checks ---
+f_isInMacro() =>
+    m1 = f_isInTimeRange(i_macro1Start, i_macro1End)
+    m2 = f_isInTimeRange(i_macro2Start, i_macro2End)
+    m3 = f_isInTimeRange(i_macro3Start, i_macro3End)
+    m1 or m2 or m3
+
+// --- Session background detection ---
+f_inAsiaSess()    => f_isInTimeRange(i_asiaSessStart, i_asiaSessEnd)
+f_inLondonSess()  => f_isInTimeRange(i_londonSessStart, i_londonSessEnd)
+f_inNYSess()      => f_isInTimeRange(i_nySessStart, i_nySessEnd)
+f_inOverlapSess() => f_inLondonSess() and f_inNYSess()
+
+f_currentMacroLabel() =>
+    m1 = f_isInTimeRange(i_macro1Start, i_macro1End)
+    m2 = f_isInTimeRange(i_macro2Start, i_macro2End)
+    m1 ? "M1" : m2 ? "M2" : "M3"
+
+// --- Safe division avoiding divide-by-zero ---
+safeDivide(float numerator, float denominator) =>
+    denominator == 0.0 ? 0.0 : numerator / denominator
+
+// --- Cap array size and clean up old drawing objects ---
+capFVGArray(array<FVG> arr, int maxSize) =>
+    while arr.size() > maxSize
+        old = arr.shift()
+        if not na(old.bx)
+            box.delete(old.bx)
+
+capSweepArray(array<Sweep> arr, int maxSize) =>
+    while arr.size() > maxSize
+        old = arr.shift()
+        if not na(old.lbl)
+            label.delete(old.lbl)
+
+capVShapeArray(array<VShape> arr, int maxSize) =>
+    while arr.size() > maxSize
+        old = arr.shift()
+        if not na(old.lbl)
+            label.delete(old.lbl)
+
+capSignalArray(array<Signal> arr, int maxSize) =>
+    while arr.size() > maxSize
+        old = arr.shift()
+        if not na(old.lbl)
+            label.delete(old.lbl)
+
+// ============================================================================
+// SECTION 5: FVG DETECTION
+// ============================================================================
+
+detectFVG() =>
+    bool bullFVG = low > high[2]
+    bool bearFVG = high < low[2]
+    [bullFVG, bearFVG]
+
+// ============================================================================
+// SECTION 6: IFVG DETECTION
+// ============================================================================
+
+checkIFVG() =>
+    if fvgArr.size() > 0
+        for i = fvgArr.size() - 1 to 0
+            fvg = fvgArr.get(i)
+            if fvg.active and not fvg.inversed
+                if fvg.dir == -1 and close > fvg.top
+                    fvg.inversed := true
+                    fvg.active   := false
+                    if not na(fvg.bx)
+                        box.delete(fvg.bx)
+                    ifvg = FVG.new(fvg.top, fvg.bottom, fvg.startBar, 1, true, true, na)
+                    if i_showIFVG
+                        ifvg.bx := box.new(fvg.startBar, fvg.top, bar_index, fvg.bottom, border_color = i_ifvgBullColor, bgcolor = i_ifvgBullColor)
+                    ifvgArr.push(ifvg)
+                else if fvg.dir == 1 and close < fvg.bottom
+                    fvg.inversed := true
+                    fvg.active   := false
+                    if not na(fvg.bx)
+                        box.delete(fvg.bx)
+                    ifvg = FVG.new(fvg.top, fvg.bottom, fvg.startBar, -1, true, true, na)
+                    if i_showIFVG
+                        ifvg.bx := box.new(fvg.startBar, fvg.top, bar_index, fvg.bottom, border_color = i_ifvgBearColor, bgcolor = i_ifvgBearColor)
+                    ifvgArr.push(ifvg)
+
+// ============================================================================
+// SECTION 7: LIQUIDITY SWEEP DETECTION
+// ============================================================================
+
+detectSweeps(float prevHigh, float prevLow) =>
+    float totalRange = high - low
+    float safeRange  = math.max(totalRange, syminfo.mintick)
+    float upperWick  = high - math.max(open, close)
+    float lowerWick  = math.min(open, close) - low
+    bool bearSweep   = high > prevHigh and close < prevHigh and safeDivide(upperWick, safeRange) >= i_sweepWickPct
+    bool bullSweep   = low < prevLow and close > prevLow and safeDivide(lowerWick, safeRange) >= i_sweepWickPct
+    [bullSweep, bearSweep]
+
+// ============================================================================
+// SECTION 8: V-SHAPE DETECTION
+// ============================================================================
+
+detectVShape() =>
+    bool bullV = false
+    bool bearV = false
+    float mom  = 0.0
+    float avgRange = ta.atr(14)
+    float safeAvg  = math.max(avgRange, syminfo.mintick)
+    float currMove = math.abs(close - open)
+    mom := safeDivide(currMove, safeAvg)
+
+    if fvgArr.size() > 0 and mom >= i_vshapeMom
+        for i = fvgArr.size() - 1 to 0
+            fvg = fvgArr.get(i)
+            if not fvg.active or fvg.inversed
+                continue
+            int barsAgo = bar_index - fvg.startBar
+            if barsAgo > i_vshapeLen or barsAgo < 1
+                continue
+            // Bullish V-shape: bearish FVG inversed upward
+            if fvg.dir == -1 and close > fvg.top and close > open
+                bullV := true
+                break
+            // Bearish V-shape: bullish FVG inversed downward
+            if fvg.dir == 1 and close < fvg.bottom and close < open
+                bearV := true
+                break
+    [bullV, bearV, mom]
+
+// --- HTF V-Shape: checks against HTF FVG array ---
+detectHTFVShape() =>
+    bool bullV = false
+    bool bearV = false
+    if htfFVGArr.size() > 0
+        for i = htfFVGArr.size() - 1 to 0
+            gap = htfFVGArr.get(i)
+            if gap.active
+                if gap.dir == 1 and low <= gap.top and low >= gap.bottom and close > open
+                    bullV := true
+                    break
+                else if gap.dir == -1 and high >= gap.bottom and high <= gap.top and close < open
+                    bearV := true
+                    break
+    [bullV, bearV]
+
+// ============================================================================
+// SECTION 9: OPPOSING FVG CHECK
+// ============================================================================
+
+isInOpposingFVG(int signalDir) =>
+    bool result = false
+    // Check HTF1 (1H) FVG array
+    if htfFVGArr.size() > 0
+        for i = htfFVGArr.size() - 1 to 0
+            fvg = htfFVGArr.get(i)
+            if fvg.active
+                if signalDir == 1 and fvg.dir == -1
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+                else if signalDir == -1 and fvg.dir == 1
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+    // Check HTF2 (4H) FVG array
+    if not result and htf2FVGArr.size() > 0
+        for i = htf2FVGArr.size() - 1 to 0
+            fvg = htf2FVGArr.get(i)
+            if fvg.active
+                if signalDir == 1 and fvg.dir == -1
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+                else if signalDir == -1 and fvg.dir == 1
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+    // Check LTF1 (5m) FVG array
+    if not result and ltfFVGArr.size() > 0
+        for i = ltfFVGArr.size() - 1 to 0
+            fvg = ltfFVGArr.get(i)
+            if fvg.active
+                if signalDir == 1 and fvg.dir == -1
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+                else if signalDir == -1 and fvg.dir == 1
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+    // Check LTF2 (15m) FVG array
+    if not result and ltf2FVGArr.size() > 0
+        for i = ltf2FVGArr.size() - 1 to 0
+            fvg = ltf2FVGArr.get(i)
+            if fvg.active
+                if signalDir == 1 and fvg.dir == -1
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+                else if signalDir == -1 and fvg.dir == 1
+                    if close >= fvg.bottom and close <= fvg.top
+                        result := true
+                        break
+    result
+
+// ============================================================================
+// SECTION 9B: SANDWICHED-BETWEEN-FVGs FILTER
+// ============================================================================
+
+// Returns true when price is caught between a bullish HTF FVG below and a
+// bearish HTF FVG above — i.e. no clean draw on either side.
+f_isSandwiched() =>
+    bool bullBelow = false
+    bool bearAbove = false
+    // Check both HTF arrays (1H + 4H)
+    if htfFVGArr.size() > 0
+        for i = 0 to htfFVGArr.size() - 1
+            gap = htfFVGArr.get(i)
+            if gap.active
+                if gap.dir == 1 and gap.top < close
+                    bullBelow := true
+                if gap.dir == -1 and gap.bottom > close
+                    bearAbove := true
+    if htf2FVGArr.size() > 0
+        for i = 0 to htf2FVGArr.size() - 1
+            gap = htf2FVGArr.get(i)
+            if gap.active
+                if gap.dir == 1 and gap.top < close
+                    bullBelow := true
+                if gap.dir == -1 and gap.bottom > close
+                    bearAbove := true
+    bullBelow and bearAbove
+
+// ============================================================================
+// SECTION 9C: INTERNAL STRUCTURE DETECTION & BREAK-EVEN FILTER
+// ============================================================================
+//
+// ICT concept: "Do not enter a trade if internal liquidity has already been
+// taken."  For a long, the nearest unswept swing HIGH above current close is
+// the break-even (first target).  If the signal candle already closed above
+// that level the trade is invalid — the BE was reached before entry.
+// For a short, the nearest unswept swing LOW below current close applies.
+//
+// Implementation uses two complementary sources of swing levels:
+//   1. ta.pivothigh() / ta.pivotlow() with i_pivotLen — detects confirmed
+//      pivot swing points (confirmed i_pivotLen bars in the past).
+//   2. eqLevels array — equal H/L levels are internal liquidity pools and
+//      are populated here alongside raw pivots so both sources feed the filter.
+//
+// f_getInternalStructure(dir) returns the NEAREST qualifying unswept level:
+//   dir =  1 (long)  → lowest unswept swing HIGH strictly above close
+//   dir = -1 (short) → highest unswept swing LOW strictly below close
+//
+// f_internalStructureOK(dir) returns true when the signal is valid (structure
+// intact) and false when the signal must be blocked (structure already taken).
+//
+// var-scoped lines track the break-even level so it can be drawn on chart.
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// f_updateEqLevels()
+// Must be called once per bar (inside main execution) before signal checks.
+// Detects confirmed swing highs/lows via ta.pivothigh/pivotlow, inserts them
+// into eqLevels, marks existing entries as swept, and extends their lines.
+// ---------------------------------------------------------------------------
+f_updateEqLevels() =>
+    // --- Swing HIGH (confirmed i_pivotLen bars ago) ---
+    float ph = ta.pivothigh(high, i_pivotLen, i_pivotLen)
+    if not na(ph)
+        bool alreadyExistsH = false
+        if eqLevels.size() > 0
+            for j = 0 to eqLevels.size() - 1
+                eq = eqLevels.get(j)
+                if eq.dir == 1 and math.abs(eq.price - ph) / ph * 100 <= i_eqTolerance
+                    alreadyExistsH := true
+                    break
+        if not alreadyExistsH
+            newEq = EqLevel.new(ph, bar_index - i_pivotLen, 1, false, na, false)
+            if i_showEqHL
+                newEq.ln := line.new(bar_index - i_pivotLen, ph, bar_index, ph,
+                             color = i_eqColor, style = line.style_dotted, width = 1)
+            eqLevels.push(newEq)
+
+    // --- Swing LOW (confirmed i_pivotLen bars ago) ---
+    float pl = ta.pivotlow(low, i_pivotLen, i_pivotLen)
+    if not na(pl)
+        bool alreadyExistsL = false
+        if eqLevels.size() > 0
+            for j = 0 to eqLevels.size() - 1
+                eq = eqLevels.get(j)
+                if eq.dir == -1 and math.abs(eq.price - pl) / pl * 100 <= i_eqTolerance
+                    alreadyExistsL := true
+                    break
+        if not alreadyExistsL
+            newEq = EqLevel.new(pl, bar_index - i_pivotLen, -1, false, na, false)
+            if i_showEqHL
+                newEq.ln := line.new(bar_index - i_pivotLen, pl, bar_index, pl,
+                             color = i_eqColor, style = line.style_dotted, width = 1)
+            eqLevels.push(newEq)
+
+    // --- Extend active lines (sweep check now handled by f_checkEqLevelSweeps) ---
+    if eqLevels.size() > 0
+        for j = 0 to eqLevels.size() - 1
+            eq = eqLevels.get(j)
+            if not eq.swept and not na(eq.ln)
+                line.set_x2(eq.ln, bar_index)
+
+    // --- Cap array to prevent unbounded growth (reuse i_fvgMax) ---
+    while eqLevels.size() > i_fvgMax
+        old = eqLevels.shift()
+        if not na(old.ln)
+            line.delete(old.ln)
+
+// ---------------------------------------------------------------------------
+// f_getInternalStructure(dir) → float
+// Returns the nearest UNSWEPT internal structure level in the trade direction.
+//   dir =  1 → nearest unswept swing HIGH strictly above close  (long BE)
+//   dir = -1 → nearest unswept swing LOW  strictly below close  (short BE)
+// Returns na when no qualifying level exists (trade allowed by default).
+// ---------------------------------------------------------------------------
+f_getInternalStructure(int dir) =>
+    float best = na
+    if eqLevels.size() > 0
+        for i = eqLevels.size() - 1 to 0
+            eq = eqLevels.get(i)
+            if eq.swept
+                continue
+            if dir == 1
+                // Long: nearest swing HIGH above close (closest = smallest value)
+                if eq.dir == 1 and eq.price > close
+                    if na(best) or eq.price < best
+                        best := eq.price
+            else
+                // Short: nearest swing LOW below close (closest = largest value)
+                if eq.dir == -1 and eq.price < close
+                    if na(best) or eq.price > best
+                        best := eq.price
+    best
+
+// ---------------------------------------------------------------------------
+// f_internalStructureOK(dir) → bool
+// true  = structure intact → safe to enter
+// false = structure already taken → BLOCK the signal
+// na level means no structure found → allow trade (permissive default)
+// ---------------------------------------------------------------------------
+f_internalStructureOK(int dir) =>
+    float lvl = f_getInternalStructure(dir)
+    if na(lvl)
+        true
+    else
+        dir == 1 ? close < lvl : close > lvl
+
+// ── Equal H/L signal filter ──────────────────────────────────
+// "Do not enter long positions with an equal low below you"
+// "Do not enter short positions with an equal high above you"
+// Only block on CONFIRMED equal levels (those with a drawn line = matched pair),
+// not on every single pivot. Also require the level to be within 2% of price
+// (proximity filter) to avoid blocking on distant old levels.
+f_noBlockingEqLevel(int dir) =>
+    bool safe = true
+    if eqLevels.size() > 0
+        for i = 0 to eqLevels.size() - 1
+            eq = eqLevels.get(i)
+            if eq.swept or na(eq.ln) or not eq.confirmed
+                continue  // Skip swept levels, unmatched pivots (no line), AND raw pivots — only block on confirmed equal pairs
+            float dist = math.abs(eq.price - close) / close * 100.0
+            if dist > 2.0
+                continue  // Skip levels more than 2% away (too distant to be relevant)
+            // For longs: block if unswept equal LOW exists below price
+            if dir == 1 and eq.dir == -1 and eq.price < close
+                safe := false
+                break
+            // For shorts: block if unswept equal HIGH exists above price
+            if dir == -1 and eq.dir == 1 and eq.price > close
+                safe := false
+                break
+    safe
+
+// ── Equal H/L Detection & Sweep ──────────────────────────────
+capEqLevelArray(array<EqLevel> arr, int maxSize) =>
+    while arr.size() > maxSize
+        old = arr.shift()
+        if not na(old.ln)
+            line.delete(old.ln)
+
+f_detectEqLevels() =>
+    float ph = ta.pivothigh(high, i_pivotLen, i_pivotLen)
+    float pl = ta.pivotlow(low, i_pivotLen, i_pivotLen)
+    if not na(ph)
+        int pivotBar = bar_index - i_pivotLen
+        bool matched = false
+        if eqLevels.size() > 0
+            for i = eqLevels.size() - 1 to 0
+                eq = eqLevels.get(i)
+                if eq.dir == 1 and not eq.swept and eq.barIdx != pivotBar
+                    if math.abs(ph - eq.price) / eq.price * 100.0 <= i_eqTolerance
+                        matched := true
+                        break
+        line ln = na
+        if matched and i_showEqHL
+            ln := line.new(pivotBar, ph, pivotBar + 1, ph, color = i_eqColor, style = line.style_dashed, width = 1, extend = extend.right)
+        eqLevels.push(EqLevel.new(ph, pivotBar, 1, false, ln, matched))
+    if not na(pl)
+        int pivotBar = bar_index - i_pivotLen
+        bool matched = false
+        if eqLevels.size() > 0
+            for i = eqLevels.size() - 1 to 0
+                eq = eqLevels.get(i)
+                if eq.dir == -1 and not eq.swept and eq.barIdx != pivotBar
+                    if math.abs(pl - eq.price) / eq.price * 100.0 <= i_eqTolerance
+                        matched := true
+                        break
+        line ln = na
+        if matched and i_showEqHL
+            ln := line.new(pivotBar, pl, pivotBar + 1, pl, color = i_eqColor, style = line.style_dashed, width = 1, extend = extend.right)
+        eqLevels.push(EqLevel.new(pl, pivotBar, -1, false, ln, matched))
+    capEqLevelArray(eqLevels, 100)
+
+f_checkEqLevelSweeps() =>
+    if eqLevels.size() > 0
+        for i = 0 to eqLevels.size() - 1
+            eq = eqLevels.get(i)
+            if not eq.swept
+                if eq.dir == 1 and high > eq.price and close < eq.price
+                    eq.swept := true
+                    if not na(eq.ln)
+                        line.set_color(eq.ln, color.new(color.gray, 60))
+                        line.set_style(eq.ln, line.style_dotted)
+                else if eq.dir == -1 and low < eq.price and close > eq.price
+                    eq.swept := true
+                    if not na(eq.ln)
+                        line.set_color(eq.ln, color.new(color.gray, 60))
+                        line.set_style(eq.ln, line.style_dotted)
+
+// --- Break-even level persistent line + label objects ---
+var line  ln_beLong   = na
+var line  ln_beShort  = na
+var label lbl_beLong  = na
+var label lbl_beShort = na
+
+// ---------------------------------------------------------------------------
+// f_drawBELevel(dir, lvl)
+// Draws (or replaces) the break-even dashed line after a valid signal fires.
+// The previous line for that direction is deleted before creating the new one
+// so the chart never shows stale BE levels from earlier signals.
+// ---------------------------------------------------------------------------
+// f_createBELevel: creates new BE line+label, returns [line, label]
+// Returns [newLine, newLabel] — caller assigns to global vars
+f_createBELevel(float lvl, string txt) =>
+    newLn  = line.new(bar_index, lvl, bar_index + 1, lvl, color = i_beLevelColor, style = line.style_dashed, width = 2, extend = extend.right)
+    newLbl = label.new(bar_index, lvl, txt, style = label.style_label_left, color = color.new(i_beLevelColor, 30), textcolor = color.white, size = size.tiny)
+    [newLn, newLbl]
+
+// ── SL/TP Trade Management ───────────────────────────────────
+var line ln_sl  = na
+var line ln_tp1 = na
+var line ln_tp2 = na
+var line ln_entry = na
+
+// Get SL from most recent IFVG in the signal direction
+f_getSL(int dir) =>
+    float sl = na
+    if ifvgArr.size() > 0
+        for i = ifvgArr.size() - 1 to 0
+            ifvg = ifvgArr.get(i)
+            if ifvg.active
+                if dir == 1 and ifvg.dir == 1
+                    sl := ifvg.bottom - i_slBuffer
+                    break
+                if dir == -1 and ifvg.dir == -1
+                    sl := ifvg.top + i_slBuffer
+                    break
+    // Fallback: use recent candle extreme
+    if na(sl)
+        sl := dir == 1 ? low - i_slBuffer : high + i_slBuffer
+    sl
+
+// Get TP targets from unswept equal levels + PDH/PDL
+f_getTP(int dir) =>
+    float tp1 = na
+    float tp2 = na
+    if eqLevels.size() > 0
+        for i = 0 to eqLevels.size() - 1
+            eq = eqLevels.get(i)
+            if eq.swept
+                continue
+            if dir == 1 and eq.dir == 1 and eq.price > close
+                if na(tp1) or eq.price < tp1
+                    tp2 := tp1
+                    tp1 := eq.price
+                else if na(tp2) or eq.price < tp2
+                    tp2 := eq.price
+            if dir == -1 and eq.dir == -1 and eq.price < close
+                if na(tp1) or eq.price > tp1
+                    tp2 := tp1
+                    tp1 := eq.price
+                else if na(tp2) or eq.price > tp2
+                    tp2 := eq.price
+    // Add PDH/PDL as targets (insert into correct TP1/TP2 position)
+    if dir == 1 and not na(prevDayHigh) and prevDayHigh > close
+        if na(tp1) or prevDayHigh < tp1
+            tp2 := tp1
+            tp1 := prevDayHigh
+        else if na(tp2) or prevDayHigh < tp2
+            tp2 := prevDayHigh
+    if dir == -1 and not na(prevDayLow) and prevDayLow < close
+        if na(tp1) or prevDayLow > tp1
+            tp2 := tp1
+            tp1 := prevDayLow
+        else if na(tp2) or prevDayLow > tp2
+            tp2 := prevDayLow
+    [tp1, tp2]
+
+// f_createSLTPLines: creates new SL/TP/Entry lines, returns [entry, sl, tp1, tp2]
+// Returns [entryLine, slLine, tp1Line, tp2Line] — caller assigns to global vars
+f_createSLTPLines(int dir) =>
+    line _entry = line.new(bar_index, close, bar_index + 20, close, color = color.white, style = line.style_solid, width = 1)
+    float sl = f_getSL(dir)
+    line _sl = line.new(bar_index, sl, bar_index + 20, sl, color = color.red, style = line.style_dashed, width = 1)
+    [tp1, tp2] = f_getTP(dir)
+    line _tp1 = not na(tp1) ? line.new(bar_index, tp1, bar_index + 20, tp1, color = color.green, style = line.style_dashed, width = 1) : na
+    line _tp2 = not na(tp2) ? line.new(bar_index, tp2, bar_index + 20, tp2, color = color.green, style = line.style_dotted, width = 1) : na
+    [_entry, _sl, _tp1, _tp2]
+
+// ============================================================================
+// SECTION 10: RECENT EVENT LOOKBACK
+// ============================================================================
+
+recentSweep(int dir, int lookback) =>
+    bool found = false
+    if sweepArr.size() > 0
+        for i = sweepArr.size() - 1 to 0
+            s = sweepArr.get(i)
+            if s.dir == dir and (bar_index - s.barIdx) <= lookback
+                found := true
+                break
+    found
+
+recentVShape(int dir, int lookback) =>
+    bool found = false
+    if vshapeArr.size() > 0
+        for i = vshapeArr.size() - 1 to 0
+            vs = vshapeArr.get(i)
+            if vs.dir == dir and (bar_index - vs.barIdx) <= lookback
+                found := true
+                break
+    found
+
+// ============================================================================
+// SECTION 11: SESSION LEVEL TRACKING
+// ============================================================================
+// NOTE: f_updateSessionLevels, f_drawSessionLines, f_updatePreMarketLevels
+// are inlined into main execution
+
+f_drawSessionOpen() =>
+    if i_showSession and not na(sessionOpen)
+        line.new(bar_index - 1, sessionOpen, bar_index, sessionOpen, color = color.gray, style = line.style_dotted, width = 1)
+
+// ============================================================================
+// SECTION 11B: PRE-MARKET H/L TRACKING
+// ============================================================================
+
+f_inPreMarket() =>
+    f_inSession(4, 0, 9, 30)
+
+// --- Sweep detection using real structural levels (ICT-correct) ---
+// Checks eqLevels (swing pivots + equal H/L) + PDH/PDL + PMH/PML
+// Returns [bool bullSweep, bool bearSweep]
+f_checkAllSweeps() =>
+    bool _bullSweep = false
+    bool _bearSweep = false
+    // Check all unswept eqLevels for sweeps
+    if eqLevels.size() > 0
+        for i = 0 to eqLevels.size() - 1
+            eq = eqLevels.get(i)
+            if not eq.swept
+                // Bear sweep of highs: wick above, close below
+                if eq.dir == 1 and high > eq.price and close < eq.price
+                    _bearSweep := true
+                // Bull sweep of lows: wick below, close above
+                if eq.dir == -1 and low < eq.price and close > eq.price
+                    _bullSweep := true
+    // Check PDH/PDL
+    if not na(prevDayHigh) and high > prevDayHigh and close < prevDayHigh
+        _bearSweep := true
+    if not na(prevDayLow) and low < prevDayLow and close > prevDayLow
+        _bullSweep := true
+    // Check PMH/PML
+    if not na(preMarketHigh) and high > preMarketHigh and close < preMarketHigh
+        _bearSweep := true
+    if not na(preMarketLow) and low < preMarketLow and close > preMarketLow
+        _bullSweep := true
+    [_bullSweep, _bearSweep]
+
+// ============================================================================
+// SECTION 12: HTF DATA VIA request.security()
+// ============================================================================
+
+// Check if price is inside an HTF FVG of the given direction
+// dir = 1: check for bullish HTF FVG (confirms long setup)
+// dir = -1: check for bearish HTF FVG (confirms short setup)
+// Checks if current price is inside an HTF FVG zone of the given direction
+f_isInsideHTFFVG(int dir) =>
+    bool result = false
+    // Check HTF1 (1H) FVG array
+    if htfFVGArr.size() > 0
+        for i = htfFVGArr.size() - 1 to 0
+            gap = htfFVGArr.get(i)
+            if gap.active and gap.dir == dir
+                if close >= gap.bottom and close <= gap.top
+                    result := true
+                    break
+    // Check HTF2 (4H) FVG array
+    if not result and htf2FVGArr.size() > 0
+        for i = htf2FVGArr.size() - 1 to 0
+            gap = htf2FVGArr.get(i)
+            if gap.active and gap.dir == dir
+                if close >= gap.bottom and close <= gap.top
+                    result := true
+                    break
+    // NOTE: LTF arrays intentionally excluded — this function checks only
+    // higher-timeframe (1H + 4H) FVGs for HTF delivery / context confirmation.
+    result
+
+[htfHigh, htfLow, htfClose, htfOpen] = request.security(syminfo.tickerid, i_htfTF, [high, low, close, open])
+
+htfBullFVG_raw = request.security(syminfo.tickerid, i_htfTF, low > high[2])
+htfBearFVG_raw = request.security(syminfo.tickerid, i_htfTF, high < low[2])
+bool htfBullFVG = htfBullFVG_raw == true
+bool htfBearFVG = htfBearFVG_raw == true
+
+// HTF OHLC for FVG gap values
+[htfH2, htfL2, htfH0, htfL0] = request.security(syminfo.tickerid, i_htfTF, [high[2], low[2], high, low])
+
+// HTF2 (4H) data
+htf2BullFVG_raw = request.security(syminfo.tickerid, i_htfTF2, low > high[2])
+htf2BearFVG_raw = request.security(syminfo.tickerid, i_htfTF2, high < low[2])
+bool htf2BullFVG = htf2BullFVG_raw == true
+bool htf2BearFVG = htf2BearFVG_raw == true
+[htf2H2, htf2L2, htf2H0, htf2L0] = request.security(syminfo.tickerid, i_htfTF2, [high[2], low[2], high, low])
+
+// LTF FVG reaction (5m)
+ltfBullFVG_raw = request.security(syminfo.tickerid, i_ltfTF, low > high[2])
+ltfBearFVG_raw = request.security(syminfo.tickerid, i_ltfTF, high < low[2])
+bool ltfBullFVG = ltfBullFVG_raw == true
+bool ltfBearFVG = ltfBearFVG_raw == true
+
+// LTF2 FVG reaction (15m)
+ltf2BullFVG_raw = request.security(syminfo.tickerid, i_ltfTF2, low > high[2])
+ltf2BearFVG_raw = request.security(syminfo.tickerid, i_ltfTF2, high < low[2])
+bool ltf2BullFVG = ltf2BullFVG_raw == true
+bool ltf2BearFVG = ltf2BearFVG_raw == true
+
+// LTF1 (5m) zone data for plotting
+[ltf1H2, ltf1L2, ltf1H0, ltf1L0] = request.security(syminfo.tickerid, i_ltfTF, [high[2], low[2], high, low])
+
+// LTF2 (15m) zone data for plotting
+[ltf2H2, ltf2L2, ltf2H0, ltf2L0] = request.security(syminfo.tickerid, i_ltfTF2, [high[2], low[2], high, low])
+
+// --- SMT Divergence correlated data ---
+// request.security() must be called unconditionally at global scope (Pine v6 rule)
+// If no symbol is set, fall back to own symbol (result is unused when smtEnabled == false)
+string smtSym = str.length(i_smtSymbol) > 0 ? i_smtSymbol : syminfo.tickerid
+[smtHigh, smtLow] = request.security(smtSym, timeframe.period, [high, low])
+bool smtEnabled = i_showSMT and str.length(i_smtSymbol) > 0
+
+// ============================================================================
+// SECTION 13: MAIN EXECUTION
+// ============================================================================
+
+// --- Reset per-bar signal count ---
+totalSignals := 0
+
+// --- Multi-TF Alignment: recent LTF opposing FVGs block signals ---
+// "You never want to be shorting into bullish fair value gaps" (applies to 5m/15m too)
+bool recentLTFBearFVG = ta.barssince(ltfBearFVG) <= 10 or ta.barssince(ltf2BearFVG) <= 10
+bool recentLTFBullFVG = ta.barssince(ltfBullFVG) <= 10 or ta.barssince(ltf2BullFVG) <= 10
+
+// --- Session Tracking ---
+bool _inSess = f_inRegularSession()
+bool newSession = _inSess and not _inSess[1]
+if newSession
+    prevDayHigh := sessionHigh
+    prevDayLow  := sessionLow
+    sessionHigh := high
+    sessionLow  := low
+    sessionOpen := open
+if _inSess
+    if high > sessionHigh or na(sessionHigh)
+        sessionHigh := high
+    if low < sessionLow or na(sessionLow)
+        sessionLow := low
+
+// --- Pre-Market H/L Tracking (inlined) ---
+bool _inPM      = f_inPreMarket()
+bool _inRegular = f_inRegularSession()
+bool _newDay    = dayofweek != dayofweek[1]
+if _newDay
+    preMarketHigh := na
+    preMarketLow  := na
+    pmFrozen      := false
+    if not na(ln_PMH)
+        line.delete(ln_PMH)
+        ln_PMH := na
+    if not na(ln_PML)
+        line.delete(ln_PML)
+        ln_PML := na
+if _inPM and not pmFrozen
+    if na(preMarketHigh) or high > preMarketHigh
+        preMarketHigh := high
+    if na(preMarketLow) or low < preMarketLow
+        preMarketLow := low
+bool _justOpened = _inRegular and not _inRegular[1]
+if _justOpened and not pmFrozen and not na(preMarketHigh)
+    pmFrozen := true
+    if i_showPMHL
+        if not na(ln_PMH)
+            line.delete(ln_PMH)
+        if not na(ln_PML)
+            line.delete(ln_PML)
+        ln_PMH := line.new(bar_index, preMarketHigh, bar_index + 1, preMarketHigh, color = i_pmhColor, style = line.style_dashed, width = 2)
+        ln_PML := line.new(bar_index, preMarketLow, bar_index + 1, preMarketLow, color = i_pmlColor, style = line.style_dashed, width = 2)
+if pmFrozen and _inRegular and i_showPMHL
+    if not na(ln_PMH)
+        line.set_x2(ln_PMH, bar_index)
+    if not na(ln_PML)
+        line.set_x2(ln_PML, bar_index)
+
+// --- Equal Level Detection ---
+f_detectEqLevels()
+f_checkEqLevelSweeps()
+
+// --- Session Lines (inlined) ---
+if newSession and i_showSession
+    if not na(ln_PDH)
+        line.delete(ln_PDH)
+        ln_PDH := na
+    if not na(ln_PDL)
+        line.delete(ln_PDL)
+        ln_PDL := na
+if i_showPDHL and not na(prevDayHigh)
+    if not na(ln_PDH)
+        line.set_x2(ln_PDH, bar_index)
+    else
+        ln_PDH := line.new(bar_index - 1, prevDayHigh, bar_index, prevDayHigh, color = i_pdhColor, style = line.style_dashed, width = 2)
+if i_showPDHL and not na(prevDayLow)
+    if not na(ln_PDL)
+        line.set_x2(ln_PDL, bar_index)
+    else
+        ln_PDL := line.new(bar_index - 1, prevDayLow, bar_index, prevDayLow, color = i_pdlColor, style = line.style_dashed, width = 2)
+if newSession
+    f_drawSessionOpen()
+
+// --- Session + Macro state ---
+bool sessionOK = inSession()
+bool inMacro   = f_isInMacro()
+
+// --- Internal Structure: populate eqLevels from pivot swing highs/lows ---
+// Must run every bar so the sweep state and line extensions stay current.
+f_updateEqLevels()
+
+// --- Current TF FVG Detection ---
+[isBullFVG, isBearFVG] = detectFVG()
+
+if isBullFVG and sessionOK
+    float fvgTop    = low
+    float fvgBottom = high[2]
+    box bx = na
+    if i_showFVG
+        bx := box.new(bar_index - 2, fvgTop, bar_index, fvgBottom, border_color = i_fvgBullColor, bgcolor = i_fvgBullColor)
+    newFVG = FVG.new(fvgTop, fvgBottom, bar_index - 2, 1, true, false, bx)
+    fvgArr.push(newFVG)
+
+if isBearFVG and sessionOK
+    float fvgTop    = low[2]
+    float fvgBottom = high
+    box bx = na
+    if i_showFVG
+        bx := box.new(bar_index - 2, fvgTop, bar_index, fvgBottom, border_color = i_fvgBearColor, bgcolor = i_fvgBearColor)
+    newFVG = FVG.new(fvgTop, fvgBottom, bar_index - 2, -1, true, false, bx)
+    fvgArr.push(newFVG)
+
+capFVGArray(fvgArr, i_fvgMax)
+
+// --- HTF FVG Detection (deduplicated: only on new HTF bar) ---
+// NOTE: sessionOK intentionally NOT checked here — HTF FVGs from London/Asia
+// must be captured so NY session can use them for delivery/opposing checks
+bool htfTimeChanged = ta.change(time(i_htfTF)) != 0
+if i_showHTF and htfTimeChanged
+    if htfBullFVG and not na(htfL0) and not na(htfH2)
+        htfGapTop    = htfL0
+        htfGapBottom = htfH2
+        if htfGapTop > htfGapBottom
+            bx = box.new(bar_index - 2, htfGapTop, bar_index, htfGapBottom, border_color = color.new(i_fvgBullColor, 60), bgcolor = color.new(i_fvgBullColor, 85))
+            htfGap = FVG.new(htfGapTop, htfGapBottom, bar_index - 2, 1, true, false, bx)
+            htfFVGArr.push(htfGap)
+    if htfBearFVG and not na(htfL2) and not na(htfH0)
+        htfGapTop    = htfL2
+        htfGapBottom = htfH0
+        if htfGapTop > htfGapBottom
+            bx = box.new(bar_index - 2, htfGapTop, bar_index, htfGapBottom, border_color = color.new(i_fvgBearColor, 60), bgcolor = color.new(i_fvgBearColor, 85))
+            htfGap = FVG.new(htfGapTop, htfGapBottom, bar_index - 2, -1, true, false, bx)
+            htfFVGArr.push(htfGap)
+    capFVGArray(htfFVGArr, i_fvgMax)
+
+// --- HTF2 (4H) FVG Detection (deduplicated) ---
+bool htf2TimeChanged = ta.change(time(i_htfTF2)) != 0
+if i_showHTF and htf2TimeChanged
+    if htf2BullFVG and not na(htf2L0) and not na(htf2H2)
+        htf2GapTop    = htf2L0
+        htf2GapBottom = htf2H2
+        if htf2GapTop > htf2GapBottom
+            bx = box.new(bar_index - 2, htf2GapTop, bar_index, htf2GapBottom, border_color = color.new(i_fvgBullColor, 50), bgcolor = color.new(i_fvgBullColor, 88))
+            htf2Gap = FVG.new(htf2GapTop, htf2GapBottom, bar_index - 2, 1, true, false, bx)
+            htf2FVGArr.push(htf2Gap)
+    if htf2BearFVG and not na(htf2L2) and not na(htf2H0)
+        htf2GapTop    = htf2L2
+        htf2GapBottom = htf2H0
+        if htf2GapTop > htf2GapBottom
+            bx = box.new(bar_index - 2, htf2GapTop, bar_index, htf2GapBottom, border_color = color.new(i_fvgBearColor, 50), bgcolor = color.new(i_fvgBearColor, 88))
+            htf2Gap = FVG.new(htf2GapTop, htf2GapBottom, bar_index - 2, -1, true, false, bx)
+            htf2FVGArr.push(htf2Gap)
+    capFVGArray(htf2FVGArr, i_fvgMax)
+
+// --- LTF1 (5m) FVG Detection (deduplicated: only on new LTF1 bar) ---
+bool ltf1TimeChanged = ta.change(time(i_ltfTF)) != 0
+if i_showLTFFVG and ltf1TimeChanged
+    if ltfBullFVG and not na(ltf1L0) and not na(ltf1H2)
+        ltf1GapTop    = ltf1L0
+        ltf1GapBottom = ltf1H2
+        if ltf1GapTop > ltf1GapBottom
+            bx = box.new(bar_index - 2, ltf1GapTop, bar_index, ltf1GapBottom, border_color = color.new(i_ltfFVGBullColor, 70), bgcolor = i_ltfFVGBullColor, border_width = 1)
+            ltf1Gap = FVG.new(ltf1GapTop, ltf1GapBottom, bar_index - 2, 1, true, false, bx)
+            ltfFVGArr.push(ltf1Gap)
+    if ltfBearFVG and not na(ltf1L2) and not na(ltf1H0)
+        ltf1GapTop    = ltf1L2
+        ltf1GapBottom = ltf1H0
+        if ltf1GapTop > ltf1GapBottom
+            bx = box.new(bar_index - 2, ltf1GapTop, bar_index, ltf1GapBottom, border_color = color.new(i_ltfFVGBearColor, 70), bgcolor = i_ltfFVGBearColor, border_width = 1)
+            ltf1Gap = FVG.new(ltf1GapTop, ltf1GapBottom, bar_index - 2, -1, true, false, bx)
+            ltfFVGArr.push(ltf1Gap)
+    capFVGArray(ltfFVGArr, i_fvgMax)
+
+// --- LTF2 (15m) FVG Detection (deduplicated: only on new LTF2 bar) ---
+bool ltf2TimeChanged = ta.change(time(i_ltfTF2)) != 0
+if i_showLTFFVG and ltf2TimeChanged
+    if ltf2BullFVG and not na(ltf2L0) and not na(ltf2H2)
+        ltf2GapTop    = ltf2L0
+        ltf2GapBottom = ltf2H2
+        if ltf2GapTop > ltf2GapBottom
+            bx = box.new(bar_index - 2, ltf2GapTop, bar_index, ltf2GapBottom, border_color = color.new(i_ltfFVGBullColor, 60), bgcolor = color.new(i_ltfFVGBullColor, 5), border_width = 1)
+            ltf2Gap = FVG.new(ltf2GapTop, ltf2GapBottom, bar_index - 2, 1, true, false, bx)
+            ltf2FVGArr.push(ltf2Gap)
+    if ltf2BearFVG and not na(ltf2L2) and not na(ltf2H0)
+        ltf2GapTop    = ltf2L2
+        ltf2GapBottom = ltf2H0
+        if ltf2GapTop > ltf2GapBottom
+            bx = box.new(bar_index - 2, ltf2GapTop, bar_index, ltf2GapBottom, border_color = color.new(i_ltfFVGBearColor, 60), bgcolor = color.new(i_ltfFVGBearColor, 5), border_width = 1)
+            ltf2Gap = FVG.new(ltf2GapTop, ltf2GapBottom, bar_index - 2, -1, true, false, bx)
+            ltf2FVGArr.push(ltf2Gap)
+    capFVGArray(ltf2FVGArr, i_fvgMax)
+
+// --- V-Shape Detection (MUST run BEFORE checkIFVG which deactivates FVGs) ---
+[isBullV, isBearV, vMom] = detectVShape()
+[htfBullV, htfBearV]     = detectHTFVShape()
+
+if isBullV and sessionOK
+    vs = VShape.new(bar_index, 1, vMom)
+    if i_showVShape
+        vs.lbl := label.new(bar_index, low, "V", style = label.style_label_up, color = color.teal, textcolor = color.white, size = size.tiny)
+    vshapeArr.push(vs)
+
+if isBearV and sessionOK
+    vs = VShape.new(bar_index, -1, vMom)
+    if i_showVShape
+        vs.lbl := label.new(bar_index, high, "V", style = label.style_label_down, color = color.maroon, textcolor = color.white, size = size.tiny)
+    vshapeArr.push(vs)
+
+capVShapeArray(vshapeArr, i_fvgMax)
+
+// --- Check for IFVGs (runs AFTER V-shape so FVGs are still active for V-shape) ---
+checkIFVG()
+capFVGArray(ifvgArr, i_fvgMax)
+
+// --- FVG Mitigation + Box Extension ---
+// ICT: FVG is mitigated when price CLOSES INTO the gap zone (not through it)
+// Bullish FVG mitigated: close <= fvg.top (price returns to fill the gap from above)
+// Bearish FVG mitigated: close >= fvg.bottom (price returns to fill the gap from below)
+if fvgArr.size() > 0
+    for i = 0 to fvgArr.size() - 1
+        fvg = fvgArr.get(i)
+        if fvg.active and not na(fvg.bx)
+            box.set_right(fvg.bx, bar_index)
+            if fvg.dir == 1 and close <= fvg.top
+                fvg.active := false
+                box.set_bgcolor(fvg.bx, i_fvgMitigateColor)
+                box.set_border_color(fvg.bx, i_fvgMitigateColor)
+            else if fvg.dir == -1 and close >= fvg.bottom
+                fvg.active := false
+                box.set_bgcolor(fvg.bx, i_fvgMitigateColor)
+                box.set_border_color(fvg.bx, i_fvgMitigateColor)
+
+// --- HTF FVG Mitigation + Box Extension ---
+// Same ICT close-into-zone logic as CTF mitigation
+if htfFVGArr.size() > 0
+    for i = 0 to htfFVGArr.size() - 1
+        gap = htfFVGArr.get(i)
+        if gap.active and not na(gap.bx)
+            box.set_right(gap.bx, bar_index)
+            if gap.dir == 1 and close <= gap.top
+                gap.active := false
+                box.set_bgcolor(gap.bx, color.new(color.gray, 92))
+            else if gap.dir == -1 and close >= gap.bottom
+                gap.active := false
+                box.set_bgcolor(gap.bx, color.new(color.gray, 92))
+
+// --- HTF2 (4H) FVG Mitigation + Box Extension ---
+if htf2FVGArr.size() > 0
+    for i = 0 to htf2FVGArr.size() - 1
+        gap = htf2FVGArr.get(i)
+        if gap.active and not na(gap.bx)
+            box.set_right(gap.bx, bar_index)
+            if gap.dir == 1 and close <= gap.top
+                gap.active := false
+                box.set_bgcolor(gap.bx, color.new(color.gray, 92))
+            else if gap.dir == -1 and close >= gap.bottom
+                gap.active := false
+                box.set_bgcolor(gap.bx, color.new(color.gray, 92))
+
+// --- LTF1 (5m) FVG Mitigation + Box Extension ---
+if ltfFVGArr.size() > 0
+    for i = 0 to ltfFVGArr.size() - 1
+        gap = ltfFVGArr.get(i)
+        if gap.active and not na(gap.bx)
+            box.set_right(gap.bx, bar_index)
+            if gap.dir == 1 and close <= gap.top
+                gap.active := false
+                box.set_bgcolor(gap.bx, color.new(color.gray, 95))
+            else if gap.dir == -1 and close >= gap.bottom
+                gap.active := false
+                box.set_bgcolor(gap.bx, color.new(color.gray, 95))
+
+// --- LTF2 (15m) FVG Mitigation + Box Extension ---
+if ltf2FVGArr.size() > 0
+    for i = 0 to ltf2FVGArr.size() - 1
+        gap = ltf2FVGArr.get(i)
+        if gap.active and not na(gap.bx)
+            box.set_right(gap.bx, bar_index)
+            if gap.dir == 1 and close <= gap.top
+                gap.active := false
+                box.set_bgcolor(gap.bx, color.new(color.gray, 95))
+            else if gap.dir == -1 and close >= gap.bottom
+                gap.active := false
+                box.set_bgcolor(gap.bx, color.new(color.gray, 95))
+
+// --- IFVG Mitigation + Box Extension ---
+if ifvgArr.size() > 0
+    for i = 0 to ifvgArr.size() - 1
+        ifvg = ifvgArr.get(i)
+        if ifvg.active
+            if not na(ifvg.bx)
+                box.set_right(ifvg.bx, bar_index)
+            // Mitigate IFVG when price closes into the zone (ICT close-into logic)
+            if ifvg.dir == 1 and close <= ifvg.top
+                ifvg.active := false
+                if not na(ifvg.bx)
+                    box.set_bgcolor(ifvg.bx, color.new(color.gray, 92))
+            else if ifvg.dir == -1 and close >= ifvg.bottom
+                ifvg.active := false
+                if not na(ifvg.bx)
+                    box.set_bgcolor(ifvg.bx, color.new(color.gray, 92))
+
+// --- Liquidity Sweep Detection (ICT: real pivot/equal/PM/PD levels) ---
+[isBullSweep, isBearSweep] = f_checkAllSweeps()
+
+if isBullSweep and sessionOK
+    s = Sweep.new(low, bar_index, 1)
+    if i_showSweeps
+        s.lbl := label.new(bar_index, low, "Sweep", style = label.style_label_up, color = color.green, textcolor = color.white, size = size.tiny)
+    sweepArr.push(s)
+
+if isBearSweep and sessionOK
+    s = Sweep.new(high, bar_index, -1)
+    if i_showSweeps
+        s.lbl := label.new(bar_index, high, "Sweep", style = label.style_label_down, color = color.red, textcolor = color.white, size = size.tiny)
+    sweepArr.push(s)
+
+capSweepArray(sweepArr, i_fvgMax)
+
+// (V-Shape detection moved above checkIFVG to fix critical ordering bug)
+
+// --- Macro Background (global scope — bgcolor cannot be inside if blocks in v6) ---
+bgcolor(i_showMacros and inMacro ? i_macroColor : na)
+
+// --- Session Backgrounds (global scope) ---
+color _sessBgColor = na
+if i_showSessBg
+    if f_inOverlapSess()
+        _sessBgColor := i_overlapColor
+    else if f_inNYSess()
+        _sessBgColor := i_nySessColor
+    else if f_inLondonSess()
+        _sessBgColor := i_londonSessColor
+    else if f_inAsiaSess()
+        _sessBgColor := i_asiaSessColor
+bgcolor(_sessBgColor)
+
+// ============================================================================
+// SECTION 13B: SMT DIVERGENCE DETECTION
+// ============================================================================
+// Compares swing highs/lows between current symbol and correlated symbol.
+// Bullish SMT: current symbol makes a LOWER LOW but correlated holds a HIGHER LOW
+// Bearish SMT: current symbol makes a HIGHER HIGH but correlated holds a LOWER HIGH
+// Uses ta.pivothigh/pivotlow with confirmed pivots; var globals track previous values.
+
+bool bullishSMT = false
+bool bearishSMT = false
+
+// Pivot detection runs unconditionally (ta.pivot* must see every bar for accuracy)
+float smtMyPL   = ta.pivotlow(low, i_smtPivotLen, i_smtPivotLen)
+float smtMyPH   = ta.pivothigh(high, i_smtPivotLen, i_smtPivotLen)
+float smtCorrPL = ta.pivotlow(smtLow, i_smtPivotLen, i_smtPivotLen)
+float smtCorrPH = ta.pivothigh(smtHigh, i_smtPivotLen, i_smtPivotLen)
+
+if smtEnabled
+    // --- Bullish SMT: our new pivot low < previous, but correlated holds higher ---
+    if not na(smtMyPL)
+        if not na(smtPrevMyLow) and smtMyPL < smtPrevMyLow
+            if not na(smtCorrPL) and not na(smtPrevMyCorrLow) and smtCorrPL >= smtPrevMyCorrLow
+                bullishSMT := true
+        smtPrevMyLow := smtMyPL
+
+    if not na(smtCorrPL)
+        smtPrevMyCorrLow := smtCorrPL
+
+    // --- Bearish SMT: our new pivot high > previous, but correlated holds lower ---
+    if not na(smtMyPH)
+        if not na(smtPrevMyHigh) and smtMyPH > smtPrevMyHigh
+            if not na(smtCorrPH) and not na(smtPrevCorrHigh) and smtCorrPH <= smtPrevCorrHigh
+                bearishSMT := true
+        smtPrevMyHigh := smtMyPH
+
+    if not na(smtCorrPH)
+        smtPrevCorrHigh := smtCorrPH
+
+    // --- Draw SMT labels ---
+    if bullishSMT and i_showSMT
+        smtLabels.push(label.new(bar_index - i_smtPivotLen, low[i_smtPivotLen], "SMT", style = label.style_label_up, color = i_smtBullColor, textcolor = color.white, size = size.small))
+    if bearishSMT and i_showSMT
+        smtLabels.push(label.new(bar_index - i_smtPivotLen, high[i_smtPivotLen], "SMT", style = label.style_label_down, color = i_smtBearColor, textcolor = color.white, size = size.small))
+
+// Cap SMT labels to prevent label leak
+while smtLabels.size() > 50
+    old = smtLabels.shift()
+    label.delete(old)
+
+// ============================================================================
+// SECTION 14: SIGNAL GENERATION
+// ============================================================================
+
+bool bullReversal     = false
+bool bearReversal     = false
+bool bullContinuation = false
+bool bearContinuation = false
+
+// Evaluate sandwich filter — suppresses all signals when
+// price is trapped between a bullish HTF FVG below and a bearish HTF FVG above
+bool sandwiched = f_isSandwiched()
+
+// --- Internal Structure pre-check (computed once per bar, both directions) ---
+// When i_filterIntStruct is disabled the checks return true unconditionally.
+bool intStructOK_long  = i_filterIntStruct ? f_internalStructureOK(1)  : true
+bool intStructOK_short = i_filterIntStruct ? f_internalStructureOK(-1) : true
+
+if sessionOK and i_showSignals and not sandwiched
+    // --- Reversal Signal ---
+    // Bullish reversal: bullish sweep + HTF bullish delivery + bullish V-shape
+    //   + not in opposing FVG + internal structure NOT already taken
+    // Transcript: "liquidity sweep OR higher time frame delivery" — either path valid
+    // Also block if recent 5m/15m FVG exists in opposing direction
+    if (recentSweep(1, i_vshapeLen) or f_isInsideHTFFVG(1)) and recentVShape(1, i_vshapeLen) and not isInOpposingFVG(1) and not recentLTFBearFVG and intStructOK_long and f_noBlockingEqLevel(1)
+        bullReversal := true
+    // Bearish reversal: bearish sweep + HTF bearish FVG zone + bearish V-shape
+    //   + not in opposing FVG + internal structure NOT taken + no blocking equal level
+    if (recentSweep(-1, i_vshapeLen) or f_isInsideHTFFVG(-1)) and recentVShape(-1, i_vshapeLen) and not isInOpposingFVG(-1) and not recentLTFBullFVG and intStructOK_short and f_noBlockingEqLevel(-1)
+        bearReversal := true
+
+if bullReversal and totalSignals < i_maxSignals
+    macroTag = inMacro ? " [" + f_currentMacroLabel() + "]" : ""
+    smtTag   = smtEnabled and bullishSMT ? " [SMT]" : ""
+    sig = Signal.new(bar_index, 1, "reversal", label.new(bar_index, low, "REV ▲" + macroTag + smtTag, style = label.style_label_up, color = color.green, textcolor = color.white, size = size.normal))
+    signalArr.push(sig)
+    bullSigCount += 1
+    totalSignals += 1
+    // Draw break-even level + SL/TP
+    if i_showBELevel
+        float _beLvl1 = f_getInternalStructure(1)
+        if not na(_beLvl1)
+            if not na(ln_beLong)
+                line.delete(ln_beLong)
+            if not na(lbl_beLong)
+                label.delete(lbl_beLong)
+            [_newLnBL, _newLblBL] = f_createBELevel(_beLvl1, "BE ▲")
+            ln_beLong  := _newLnBL
+            lbl_beLong := _newLblBL
+    if i_showSLTP
+        if not na(ln_sl)
+            line.delete(ln_sl)
+        if not na(ln_tp1)
+            line.delete(ln_tp1)
+        if not na(ln_tp2)
+            line.delete(ln_tp2)
+        if not na(ln_entry)
+            line.delete(ln_entry)
+        [_e1, _s1, _t11, _t21] = f_createSLTPLines(1)
+        ln_entry := _e1
+        ln_sl    := _s1
+        ln_tp1   := _t11
+        ln_tp2   := _t21
+
+if bearReversal and totalSignals < i_maxSignals
+    macroTag = inMacro ? " [" + f_currentMacroLabel() + "]" : ""
+    smtTag   = smtEnabled and bearishSMT ? " [SMT]" : ""
+    sig = Signal.new(bar_index, -1, "reversal", label.new(bar_index, high, "REV ▼" + macroTag + smtTag, style = label.style_label_down, color = color.red, textcolor = color.white, size = size.normal))
+    signalArr.push(sig)
+    bearSigCount += 1
+    totalSignals += 1
+    // Draw break-even level + SL/TP (inline)
+    if i_showBELevel
+        float _beLvl2 = f_getInternalStructure(-1)
+        if not na(_beLvl2)
+            if not na(ln_beShort)
+                line.delete(ln_beShort)
+            if not na(lbl_beShort)
+                label.delete(lbl_beShort)
+            [_newLnBS, _newLblBS] = f_createBELevel(_beLvl2, "BE ▼")
+            ln_beShort  := _newLnBS
+            lbl_beShort := _newLblBS
+    if i_showSLTP
+        if not na(ln_sl)
+            line.delete(ln_sl)
+        if not na(ln_tp1)
+            line.delete(ln_tp1)
+        if not na(ln_tp2)
+            line.delete(ln_tp2)
+        if not na(ln_entry)
+            line.delete(ln_entry)
+        [_e2, _s2, _t12, _t22] = f_createSLTPLines(-1)
+        ln_entry := _e2
+        ln_sl    := _s2
+        ln_tp1   := _t12
+        ln_tp2   := _t22
+
+// --- Continuation Signal ---
+// Fires when either 5m or 15m LTF FVG is present with HTF alignment
+if sessionOK and i_showSignals and not sandwiched
+    float avgRange = ta.atr(14)
+    float safeAvg  = math.max(avgRange, syminfo.mintick)
+    float momNow   = safeDivide(math.abs(close - open), safeAvg)
+    bool  momOK    = momNow >= 1.0
+    // Two-timeframe alignment: LTF FVG provides entry trigger, HTF FVG provides context
+    if (ltfBullFVG or ltf2BullFVG) and f_isInsideHTFFVG(1) and not isInOpposingFVG(1) and not recentLTFBearFVG and momOK and not bullReversal and intStructOK_long and f_noBlockingEqLevel(1) and totalSignals < i_maxSignals
+        bullContinuation := true
+    if (ltfBearFVG or ltf2BearFVG) and f_isInsideHTFFVG(-1) and not isInOpposingFVG(-1) and not recentLTFBullFVG and momOK and not bearReversal and intStructOK_short and f_noBlockingEqLevel(-1) and totalSignals < i_maxSignals
+        bearContinuation := true
+
+if bullContinuation
+    sig = Signal.new(bar_index, 1, "continuation", label.new(bar_index, low, "CONT ▲", style = label.style_label_up, color = color.lime, textcolor = color.black, size = size.small))
+    signalArr.push(sig)
+    bullSigCount += 1
+    totalSignals += 1
+    if i_showBELevel
+        float _beLvlC1 = f_getInternalStructure(1)
+        if not na(_beLvlC1)
+            if not na(ln_beLong)
+                line.delete(ln_beLong)
+            if not na(lbl_beLong)
+                label.delete(lbl_beLong)
+            [_cLn1, _cLbl1] = f_createBELevel(_beLvlC1, "BE ▲")
+            ln_beLong  := _cLn1
+            lbl_beLong := _cLbl1
+
+if bearContinuation
+    sig = Signal.new(bar_index, -1, "continuation", label.new(bar_index, high, "CONT ▼", style = label.style_label_down, color = color.orange, textcolor = color.black, size = size.small))
+    signalArr.push(sig)
+    bearSigCount += 1
+    totalSignals += 1
+    if i_showBELevel
+        float _beLvlC2 = f_getInternalStructure(-1)
+        if not na(_beLvlC2)
+            if not na(ln_beShort)
+                line.delete(ln_beShort)
+            if not na(lbl_beShort)
+                label.delete(lbl_beShort)
+            [_cLn2, _cLbl2] = f_createBELevel(_beLvlC2, "BE ▼")
+            ln_beShort  := _cLn2
+            lbl_beShort := _cLbl2
+
+capSignalArray(signalArr, 200)
+
+// ============================================================================
+// SECTION 15: ALERTS
+// ============================================================================
+
+alertcondition(bullReversal, "Bullish Reversal", "ManipX: Bullish reversal signal on {{ticker}} {{interval}}")
+alertcondition(bearReversal, "Bearish Reversal", "ManipX: Bearish reversal signal on {{ticker}} {{interval}}")
+alertcondition(bullContinuation, "Bullish Continuation", "ManipX: Bullish continuation on {{ticker}} {{interval}}")
+alertcondition(bearContinuation, "Bearish Continuation", "ManipX: Bearish continuation on {{ticker}} {{interval}}")
+alertcondition(isBullFVG, "Bullish FVG", "ManipX: Bullish FVG on {{ticker}} {{interval}}")
+alertcondition(isBearFVG, "Bearish FVG", "ManipX: Bearish FVG on {{ticker}} {{interval}}")
+alertcondition(isBullSweep, "Bullish Sweep", "ManipX: Bullish liquidity sweep on {{ticker}} {{interval}}")
+alertcondition(isBearSweep, "Bearish Sweep", "ManipX: Bearish liquidity sweep on {{ticker}} {{interval}}")
+alertcondition(bullishSMT, "Bullish SMT Divergence", "ManipX: Bullish SMT divergence on {{ticker}} {{interval}}")
+alertcondition(bearishSMT, "Bearish SMT Divergence", "ManipX: Bearish SMT divergence on {{ticker}} {{interval}}")
+
+// ============================================================================
+// SECTION 16: DASHBOARD
+// ============================================================================
+
+var table dash = table.new(position.top_right, 2, 11, bgcolor = color.new(color.black, 30), border_width = 1)
+
+if barstate.islast and i_showDashboard
+    table.cell(dash, 0, 0, "Manipulation X v4", text_color = color.white, text_size = size.normal, bgcolor = color.new(color.blue, 60))
+    table.cell(dash, 1, 0, syminfo.ticker, text_color = color.white, text_size = size.normal, bgcolor = color.new(color.blue, 60))
+
+    // Active FVGs
+    int activeFVGs = 0
+    if fvgArr.size() > 0
+        for i = 0 to fvgArr.size() - 1
+            if fvgArr.get(i).active
+                activeFVGs += 1
+    table.cell(dash, 0, 1, "Active FVGs", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 1, str.tostring(activeFVGs), text_color = color.yellow, text_size = size.tiny)
+
+    // Active IFVGs
+    int activeIFVGs = 0
+    if ifvgArr.size() > 0
+        for i = 0 to ifvgArr.size() - 1
+            if ifvgArr.get(i).active
+                activeIFVGs += 1
+    table.cell(dash, 0, 2, "Active IFVGs", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 2, str.tostring(activeIFVGs), text_color = color.teal, text_size = size.tiny)
+
+    // HTF FVGs
+    int activeHTF = 0
+    if htfFVGArr.size() > 0
+        for i = 0 to htfFVGArr.size() - 1
+            if htfFVGArr.get(i).active
+                activeHTF += 1
+    table.cell(dash, 0, 3, "HTF FVGs", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 3, str.tostring(activeHTF), text_color = color.aqua, text_size = size.tiny)
+
+    // LTF FVGs (5m + 15m)
+    int activeLTF = 0
+    if ltfFVGArr.size() > 0
+        for i = 0 to ltfFVGArr.size() - 1
+            if ltfFVGArr.get(i).active
+                activeLTF += 1
+    if ltf2FVGArr.size() > 0
+        for i = 0 to ltf2FVGArr.size() - 1
+            if ltf2FVGArr.get(i).active
+                activeLTF += 1
+    table.cell(dash, 0, 4, "LTF FVGs", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 4, str.tostring(activeLTF), text_color = color.lime, text_size = size.tiny)
+
+    // Total Sweeps
+    table.cell(dash, 0, 5, "Total Sweeps", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 5, str.tostring(sweepArr.size()), text_color = color.orange, text_size = size.tiny)
+
+    // V-Shapes
+    table.cell(dash, 0, 6, "V-Shapes", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 6, str.tostring(vshapeArr.size()), text_color = color.purple, text_size = size.tiny)
+
+    // Signals
+    table.cell(dash, 0, 7, "Bull Signals", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 7, str.tostring(bullSigCount), text_color = color.green, text_size = size.tiny)
+    table.cell(dash, 0, 8, "Bear Signals", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 8, str.tostring(bearSigCount), text_color = color.red, text_size = size.tiny)
+
+    // SMT Divergence
+    string smtText = not smtEnabled ? "OFF" : bullishSMT ? "BULL" : bearishSMT ? "BEAR" : "---"
+    color  smtClr  = not smtEnabled ? color.gray : bullishSMT ? i_smtBullColor : bearishSMT ? i_smtBearColor : color.gray
+    table.cell(dash, 0, 9, "SMT Diverg.", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 9, smtText, text_color = smtClr, text_size = size.tiny)
+
+    // Session / Macro
+    sessText = sessionOK ? "ACTIVE" : "CLOSED"
+    sessClr  = sessionOK ? color.green : color.gray
+    macroTxt = inMacro ? f_currentMacroLabel() : "---"
+    macroClr = inMacro ? color.yellow : color.gray
+    table.cell(dash, 0, 10, "Session / Macro", text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 1, 10, sessText + " | " + macroTxt, text_color = sessClr, text_size = size.tiny)
+
+// ============================================================================
+// END OF INDICATOR
+// ============================================================================
