@@ -11,7 +11,7 @@ indicator("Volume Divergence Reversal Signals", shorttitle = "VDRS",
 // ──────────────────────────────────────────────────────────────────────────────
 
 // Volume
-i_normLen   = input.int(1000, "Normalization Length", minval = 10, group = "Volume")
+i_normLen   = input.int(200, "Normalization Length", minval = 10, group = "Volume", tooltip = "How many bars to normalize volume against. Default 200 works on all timeframes. Use 500-1000 for intraday if you want longer history.")
 i_showCols  = input.bool(true, "Show Volume Columns", group = "Volume")
 
 // Divergence
@@ -31,7 +31,7 @@ i_veydThresh = input.float(0.4, "VEYD Decay Threshold", minval=0.1, maxval=0.9, 
 
 // Surprisal
 i_useSurprisal = input.bool(true, "Enable Volume Surprisal", group = "Surprisal")
-i_surpLen      = input.int(200, "Surprisal Lookback", minval=50, group = "Surprisal")
+i_surpLen      = input.int(100, "Surprisal Lookback", minval=20, group = "Surprisal")
 i_surpBins     = input.int(20, "Histogram Bins", minval=5, maxval=50, group = "Surprisal")
 i_surpThresh   = input.float(3.0, "Surprisal Threshold (bits)", minval=1.0, step=0.5, group = "Surprisal")
 
