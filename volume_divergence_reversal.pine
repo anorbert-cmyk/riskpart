@@ -141,7 +141,7 @@ for j = 0 to i_surpLen - 1
     int bj = surpBinW > 0 ? math.min(int(math.floor((vj - surpVolMin) / surpBinW)), i_surpBins - 1) : 0
     if bj == surpCurBin
         surpSameBinCount += 1
-float surpProb = surpSameBinCount / i_surpLen
+float surpProb = surpSameBinCount / float(i_surpLen)
 float surprisal = surpProb > 0 ? -math.log(surpProb) / math.log(2) : 0.0
 bool highSurprisal = i_useSurprisal and surprisal >= i_surpThresh
 
