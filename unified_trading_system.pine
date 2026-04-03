@@ -191,16 +191,46 @@ bool wtOS = wt1 < i_os1
 bool adxTrending = i_enableRegime and not na(adxVal) and adxVal > i_trendThresh
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Section 5C: Leading Tier 1 — Early Warning (fires on current bar, may repaint)
+// Section 5C: Leading Signals — ALL NON-REPAINT
 // ──────────────────────────────────────────────────────────────────────────────
 
+// TIER 0: ALERT — Absorption on bar close (0 delay, NON-REPAINT)
+// Fires when: high volume + tiny range + bar is CLOSED (barstate.isconfirmed)
+// This detects institutional absorption: massive volume absorbed without moving price
 float resultPR = ta.percentrank(high - low, i_normLen)
-bool effortStalling = normVol >= 80 and resultPR <= 40
+bool effortStalling = normVol >= 80 and resultPR <= 25
+bool lhRising = couplingNorm >= 75 and couplingNorm > couplingNorm[1] and couplingNorm[1] > couplingNorm[2]
 bool nearLocalHigh = high >= ta.highest(high, i_streamWindow)
 bool nearLocalLow = low <= ta.lowest(low, i_streamWindow)
-bool lhRising = couplingNorm >= 75 and couplingNorm > couplingNorm[1] and couplingNorm[1] > couplingNorm[2]
-bool earlyBull = i_enableLeading and effortStalling and nearLocalLow and (lhRising or phaseTransition) and close > open
-bool earlyBear = i_enableLeading and effortStalling and nearLocalHigh and (lhRising or phaseTransition) and close < open
+bool alertBull = i_enableLeading and barstate.isconfirmed and effortStalling and nearLocalLow and (lhRising or phaseTransition) and close > open
+bool alertBear = i_enableLeading and barstate.isconfirmed and effortStalling and nearLocalHigh and (lhRising or phaseTransition) and close < open
+
+// TIER 1: EARLY — Fast pivot divergence (1 bar delay, NON-REPAINT)
+// Uses lbR=1 instead of lbR=5 for 4x faster detection
+float fastPH = ta.pivothigh(high, i_lbL, 1)
+float fastPL = ta.pivotlow(low, i_lbL, 1)
+float fastNormVol = f_medianNormVol(1, 1)
+int fastPivotBar = bar_index - 1
+var float prevFastHigh = na
+var float prevFastNormVolH = na
+var int prevFastHighBar = na
+var float prevFastLow = na
+var float prevFastNormVolL = na
+var int prevFastLowBar = na
+bool earlyBull = false
+bool earlyBear = false
+if not na(fastPH)
+    if not na(prevFastHigh) and fastPH > prevFastHigh and fastNormVol < prevFastNormVolH and fastNormVol >= i_minNormVol and (fastPH - prevFastHigh) > atrVal * i_minPivotDepth
+        earlyBear := true and i_enableLeading
+    prevFastHigh := fastPH
+    prevFastNormVolH := fastNormVol
+    prevFastHighBar := fastPivotBar
+if not na(fastPL)
+    if not na(prevFastLow) and fastPL < prevFastLow and fastNormVol > prevFastNormVolL and fastNormVol >= i_minNormVol and (prevFastLow - fastPL) > atrVal * i_minPivotDepth
+        earlyBull := true and i_enableLeading
+    prevFastLow := fastPL
+    prevFastNormVolL := fastNormVol
+    prevFastLowBar := fastPivotBar
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Section 6: Pivot Detection
@@ -421,14 +451,23 @@ plotshape(bearSignal and i_labelStyle == "Shape Cross", title = "Bear Cross",
      color = i_bearColor, size = size.small, offset = -i_lbR, force_overlay = true)
 
 // ──────────────────────────────────────────────────────────────────────────────
-// --- Leading signal labels (Tier 1: Early Warning) ---
-var array<label> leadLblArr = array.new<label>()
-if i_enableLeading and earlyBull and i_showLabels
-    leadLblArr.push(label.new(bar_index, low, "EARLY BULL", color=color.new(color.aqua, 30), textcolor=color.white, size=size.tiny, style=label.style_label_up, force_overlay=true))
-if i_enableLeading and earlyBear and i_showLabels
-    leadLblArr.push(label.new(bar_index, high, "EARLY BEAR", color=color.new(color.orange, 30), textcolor=color.white, size=size.tiny, style=label.style_label_down, force_overlay=true))
-if leadLblArr.size() > 50
-    label.delete(leadLblArr.shift())
+// --- ALERT labels (Tier 0: absorption on close, 0 delay, NON-REPAINT) ---
+var array<label> alertLblArr = array.new<label>()
+if alertBull and i_showLabels
+    alertLblArr.push(label.new(bar_index, low, "ALERT BULL", color=color.new(color.yellow, 20), textcolor=color.black, size=size.tiny, style=label.style_label_up, force_overlay=true))
+if alertBear and i_showLabels
+    alertLblArr.push(label.new(bar_index, high, "ALERT BEAR", color=color.new(color.yellow, 20), textcolor=color.black, size=size.tiny, style=label.style_label_down, force_overlay=true))
+if alertLblArr.size() > 50
+    label.delete(alertLblArr.shift())
+
+// --- EARLY labels (Tier 1: fast pivot, 1 bar delay, NON-REPAINT) ---
+var array<label> earlyLblArr = array.new<label>()
+if earlyBull and i_showLabels
+    earlyLblArr.push(label.new(fastPivotBar, low[1], "EARLY BULL", color=color.new(color.aqua, 20), textcolor=color.white, size=size.tiny, style=label.style_label_up, force_overlay=true))
+if earlyBear and i_showLabels
+    earlyLblArr.push(label.new(fastPivotBar, high[1], "EARLY BEAR", color=color.new(color.orange, 20), textcolor=color.white, size=size.tiny, style=label.style_label_down, force_overlay=true))
+if earlyLblArr.size() > 50
+    label.delete(earlyLblArr.shift())
 
 // --- WT Timing Entry labels ---
 if wtTimingBull and i_showLabels
@@ -484,8 +523,10 @@ alertcondition(bearSignal and veydExhaustion, "VEYD Exhaustion Bear", "VDRS: Bea
 alertcondition(bullSignal and highSurprisal, "Surprisal Bull", "VDRS: Bullish + high volume surprisal")
 alertcondition(bearSignal and highSurprisal, "Surprisal Bear", "VDRS: Bearish + high volume surprisal")
 alertcondition(phaseTransition, "Phase Transition", "UTS: Latent heat phase transition detected")
-alertcondition(earlyBull, "Early Bull Warning", "UTS: Early bullish warning (may repaint)")
-alertcondition(earlyBear, "Early Bear Warning", "UTS: Early bearish warning (may repaint)")
+alertcondition(alertBull, "Alert Bull (absorption)", "UTS: Bullish absorption detected on bar close (non-repaint)")
+alertcondition(alertBear, "Alert Bear (absorption)", "UTS: Bearish absorption detected on bar close (non-repaint)")
+alertcondition(earlyBull, "Early Bull (fast pivot)", "UTS: Early bullish divergence at fast pivot (non-repaint)")
+alertcondition(earlyBear, "Early Bear (fast pivot)", "UTS: Early bearish divergence at fast pivot (non-repaint)")
 alertcondition(wtTimingBull, "WT Timing Bull Entry", "UTS: WT timing bullish entry triggered")
 alertcondition(wtTimingBear, "WT Timing Bear Entry", "UTS: WT timing bearish entry triggered")
 alertcondition(wtBuySignal, "WT Buy Signal", "UTS: WaveTrend bullish cross in oversold")
